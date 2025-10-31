@@ -1,0 +1,14 @@
+/Users/rkttu/Projects/macosdownloader/MacOSDownloaderTest/bin/Debug/net8.0/MacOSDownloaderTest
+/Users/rkttu/Projects/macosdownloader/MacOSDownloaderTest/bin/Debug/net8.0/MacOSDownloaderTest.deps.json
+/Users/rkttu/Projects/macosdownloader/MacOSDownloaderTest/bin/Debug/net8.0/MacOSDownloaderTest.runtimeconfig.json
+/Users/rkttu/Projects/macosdownloader/MacOSDownloaderTest/bin/Debug/net8.0/MacOSDownloaderTest.dll
+/Users/rkttu/Projects/macosdownloader/MacOSDownloaderTest/bin/Debug/net8.0/MacOSDownloaderTest.pdb
+/Users/rkttu/Projects/macosdownloader/MacOSDownloaderTest/obj/Debug/net8.0/MacOSDownloaderTest.GeneratedMSBuildEditorConfig.editorconfig
+/Users/rkttu/Projects/macosdownloader/MacOSDownloaderTest/obj/Debug/net8.0/MacOSDownloaderTest.AssemblyInfoInputs.cache
+/Users/rkttu/Projects/macosdownloader/MacOSDownloaderTest/obj/Debug/net8.0/MacOSDownloaderTest.AssemblyInfo.cs
+/Users/rkttu/Projects/macosdownloader/MacOSDownloaderTest/obj/Debug/net8.0/MacOSDownloaderTest.csproj.CoreCompileInputs.cache
+/Users/rkttu/Projects/macosdownloader/MacOSDownloaderTest/obj/Debug/net8.0/MacOSDownloaderTest.dll
+/Users/rkttu/Projects/macosdownloader/MacOSDownloaderTest/obj/Debug/net8.0/refint/MacOSDownloaderTest.dll
+/Users/rkttu/Projects/macosdownloader/MacOSDownloaderTest/obj/Debug/net8.0/MacOSDownloaderTest.pdb
+/Users/rkttu/Projects/macosdownloader/MacOSDownloaderTest/obj/Debug/net8.0/MacOSDownloaderTest.genruntimeconfig.cache
+/Users/rkttu/Projects/macosdownloader/MacOSDownloaderTest/obj/Debug/net8.0/ref/MacOSDownloaderTest.dll

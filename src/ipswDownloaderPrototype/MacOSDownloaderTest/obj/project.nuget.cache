@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "dgSpecHash": "I1GfHMXExu0=",
+  "success": true,
+  "projectFilePath": "/Users/rkttu/Projects/macSandbox/src/ipswDownloaderPrototype/MacOSDownloaderTest/MacOSDownloaderTest.csproj",
+  "expectedPackageFiles": [
+    "/Users/rkttu/.nuget/packages/microsoft.netcore.app.ref/8.0.21/microsoft.netcore.app.ref.8.0.21.nupkg.sha512",
+    "/Users/rkttu/.nuget/packages/microsoft.aspnetcore.app.ref/8.0.21/microsoft.aspnetcore.app.ref.8.0.21.nupkg.sha512",
+    "/Users/rkttu/.nuget/packages/microsoft.netcore.app.host.osx-arm64/8.0.21/microsoft.netcore.app.host.osx-arm64.8.0.21.nupkg.sha512"
+  ],
+  "logs": []
+}

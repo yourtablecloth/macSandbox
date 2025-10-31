@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Virtualization framework 사용을 위한 entitlement -->
+    <key>com.apple.security.virtualization</key>
+    <true/>
+    
+    <!-- 네트워크 접근 (다운로드) -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+    
+    <!-- 주석: App Sandbox는 CLI 도구에서 문제를 일으킬 수 있으므로 제거 -->
+    <!-- <key>com.apple.security.app-sandbox</key>
+    <true/> -->
+</dict>
+</plist>
