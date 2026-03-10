@@ -1,0 +1,11 @@
+.DS_Store
+.build/
+.swiftpm/
+*.xcodeproj
+*.xcworkspace
+DerivedData/
+*.o
+*.swp
+vendor/qemu/
+.bottle-cache/
+__pycache__/
