@@ -72,8 +72,8 @@ Windows 11 ARM64 ESD를 다운로드하여 무인 설치(Unattended Install)를 
 
 #### 1.1 `BaselineImage` 모델 생성
 
-- [ ] `src/MacSandbox/Models/BaselineImage.swift` 신규 생성
-- [ ] 필드 정의:
+- [x] `src/MacSandbox/Models/BaselineImage.swift` 신규 생성
+- [x] 필드 정의:
   - `id: UUID`
   - `name: String` — 사용자 지정 이름 (예: "Windows 11 24H2")
   - `diskPath: String` — baseline.qcow2 절대 경로
@@ -83,13 +83,13 @@ Windows 11 ARM64 ESD를 다운로드하여 무인 설치(Unattended Install)를 
   - `diskSizeGB: Int`
   - `architecture: GuestArchitecture`
   - `status: BaselineStatus` — `.creating`, `.ready`, `.error`, `.deleted`
-- [ ] `BaselineStatus` enum 정의
-- [ ] `Codable` 준수 (`metadata.json`으로 저장)
+- [x] `BaselineStatus` enum 정의
+- [x] `Codable` 준수 (`metadata.json`으로 저장)
 
 #### 1.2 `SetupProgress` 모델 생성
 
-- [ ] `src/MacSandbox/Models/SetupProgress.swift` 신규 생성
-- [ ] Setup Mode의 단계별 진행 상태 추적:
+- [x] `src/MacSandbox/Models/SetupProgress.swift` 신규 생성
+- [x] Setup Mode의 단계별 진행 상태 추적:
   - `.idle` — 대기
   - `.downloadingISO` — ESD/ISO 다운로드 중
   - `.preparingDisk` — qcow2 디스크 생성 중
@@ -107,37 +107,37 @@ Windows 11 ARM64 ESD를 다운로드하여 무인 설치(Unattended Install)를 
 
 #### 2.1 `UnattendGenerator` 서비스 생성
 
-- [ ] `src/MacSandbox/Services/UnattendGenerator.swift` 신규 생성
-- [ ] Windows 11 ARM64 무인 설치용 `autounattend.xml` 템플릿 구현
-- [ ] 포함해야 할 설정:
+- [x] `src/MacSandbox/Services/UnattendGenerator.swift` 신규 생성
+- [x] Windows 11 ARM64 무인 설치용 `autounattend.xml` 템플릿 구현
+- [x] 포함해야 할 설정:
   - **windowsPE 패스**: 디스크 파티션 설정 (GPT: EFI SP + MSR + Windows)
   - **windowsPE 패스**: `Microsoft-Windows-Setup > ImageInstall` — ESD/WIM 이미지 선택
   - **specialize 패스**: 컴퓨터 이름, 로케일 설정
   - **oobeSystem 패스**: OOBE 스킵 설정 (EULA 동의, 네트워크 스킵)
   - **oobeSystem 패스**: 로컬 관리자 계정 자동 생성
   - **oobeSystem 패스**: 자동 로그온 설정
-- [ ] virtio 드라이버 로딩을 위한 `DriverPaths` 섹션 추가
+- [x] virtio 드라이버 로딩을 위한 `DriverPaths` 섹션 추가
   - ARM64에서는 `viostor\w11\ARM64`, `NetKVM\w11\ARM64` 경로
-- [ ] 설치 완료 후 shutdown 명령을 실행하는 `FirstLogonCommands` 추가
+- [x] 설치 완료 후 shutdown 명령을 실행하는 `FirstLogonCommands` 추가
   - `shutdown /s /t 30 /f` — 설치 완료 후 자동 종료 (베이스라인 저장 트리거)
-- [ ] 템플릿 파라미터:
+- [x] 템플릿 파라미터:
   - `locale: String` (기본: "ko-KR")
   - `username: String` (기본: "User")
   - `password: String` (기본: "" — 빈 비밀번호)
   - `computerName: String` (기본: "SANDBOX")
   - `diskSizeGB: Int`
-- [ ] 생성된 XML을 임시 ISO로 패키징하는 기능 (또는 virtio-9p로 전달)
+- [x] 생성된 XML을 임시 ISO로 패키징하는 기능 (또는 virtio-9p로 전달)
 
 #### 2.2 Unattend ISO 생성
 
-- [ ] `autounattend.xml`을 포함하는 작은 ISO 이미지 생성
-- [ ] macOS `hdiutil` 사용:
+- [x] `autounattend.xml`을 포함하는 작은 ISO 이미지 생성
+- [x] macOS `hdiutil` 사용:
 
   ```bash
   hdiutil makehybrid -o unattend.iso -joliet -iso <temp_dir>
   ```
 
-- [ ] 임시 디렉토리에 `autounattend.xml` 배치 후 ISO 생성
+- [x] 임시 디렉토리에 `autounattend.xml` 배치 후 ISO 생성
 - [ ] 대안: virtio-9p 공유 폴더로 `autounattend.xml` 전달 (`-virtfs` 옵션)
 
 ---
