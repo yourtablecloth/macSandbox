@@ -16,10 +16,9 @@ final class SandboxViewModel: ObservableObject {
     @Published var availableBaseImages: [URL] = []
     @Published var currentSandboxId: String?
 
-    // Baseline support
-    @Published var availableBaselines: [BaselineImage] = []
-    @Published var selectedBaseline: BaselineImage?
-    /// true이면 selectedBaseline 기반으로 시작, false이면 기존 baseImagePath 방식
+    // Baseline support (단일 베이스라인)
+    @Published var currentBaseline: BaselineImage?
+    /// true이면 단일 베이스라인 기반으로 시작, false이면 기존 baseImagePath 방식
     @Published var useBaselineMode: Bool = false
 
     // MARK: - Services
@@ -35,6 +34,12 @@ final class SandboxViewModel: ObservableObject {
         refreshData()
     }
 
+    // MARK: - Computed
+
+    var hasBaseline: Bool {
+        currentBaseline != nil && currentBaseline?.status == .ready
+    }
+
     // MARK: - Actions
 
     /// 데이터 새로고침
@@ -42,7 +47,7 @@ final class SandboxViewModel: ObservableObject {
         do {
             availableBaseImages = try diskImageService.listBaseImages()
             savedConfigurations = try configService.listSavedConfigurations()
-            availableBaselines = baselineService.listBaselines()
+            currentBaseline = baselineService.loadBaseline()
         } catch {
             showError(error.localizedDescription)
         }
@@ -54,8 +59,8 @@ final class SandboxViewModel: ObservableObject {
 
         // 베이스라인 모드 vs 기존 모드
         if useBaselineMode {
-            guard let baseline = selectedBaseline, baseline.status == .ready else {
-                showError("사용 가능한 베이스라인을 선택해주세요.")
+            guard let baseline = currentBaseline, baseline.status == .ready else {
+                showError("사용 가능한 베이스라인이 없습니다.")
                 return
             }
             configuration.baseImagePath = baseline.diskPath
@@ -76,7 +81,7 @@ final class SandboxViewModel: ObservableObject {
                 let overlayPath: String
                 var sandboxEfiVarsPath: String?
 
-                if useBaselineMode, let baseline = selectedBaseline {
+                if useBaselineMode, let baseline = currentBaseline {
                     // 베이스라인 기반: overlay + efi-vars 복사
                     let env = try diskImageService.createSandboxEnvironment(
                         baseline: baseline,
@@ -84,7 +89,7 @@ final class SandboxViewModel: ObservableObject {
                     )
                     overlayPath = env.overlayDiskPath
                     sandboxEfiVarsPath = env.efiVarsPath
-                    appendLog("베이스라인 샌드박스 환경 생성: \(baseline.name)")
+                    appendLog("베이스라인 샌드박스 환경 생성")
                 } else {
                     // 기존 방식: overlay만
                     overlayPath = try diskImageService.createOverlay(

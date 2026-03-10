@@ -2,8 +2,8 @@ import Foundation
 
 /// 베이스라인 이미지 생성 및 관리 서비스
 ///
-/// Setup Mode에서 Windows ISO로부터 베이스라인 qcow2 이미지를 생성하고,
-/// 생성된 베이스라인 목록을 관리합니다.
+/// Setup Mode에서 Windows ISO로부터 단일 베이스라인 qcow2 이미지를 생성하고 관리합니다.
+/// 시스템에는 항상 하나의 베이스라인만 존재합니다 (단일 베이스라인 정책).
 @MainActor
 final class BaselineBuilderService: ObservableObject {
 
@@ -23,21 +23,23 @@ final class BaselineBuilderService: ObservableObject {
 
     // MARK: - Private
 
-    private let baselinesDirectory: URL
+    /// 단일 베이스라인 고정 경로
+    private let baselineDirectory: URL
     private let fm = FileManager.default
     /// 설치 타임아웃 (기본 60분)
     private let installTimeoutSeconds: TimeInterval = 3600
 
     init() {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        self.baselinesDirectory = appSupport.appendingPathComponent("MacSandbox/baselines", isDirectory: true)
+        self.baselineDirectory = appSupport.appendingPathComponent("MacSandbox/baseline", isDirectory: true)
     }
 
     // MARK: - Baseline Creation
 
     /// 베이스라인 이미지 생성 (전체 플로우)
+    ///
+    /// 단일 베이스라인 정책: 기존 베이스라인이 있으면 삭제 후 새로 생성합니다.
     /// - Parameters:
-    ///   - name: 베이스라인 이름
     ///   - isoPath: Windows ISO/ESD 파일 경로
     ///   - diskSizeGB: 디스크 크기 (GB)
     ///   - cpuCores: 설치 시 CPU 코어 수
@@ -46,7 +48,6 @@ final class BaselineBuilderService: ObservableObject {
     ///   - architecture: 게스트 아키텍처
     ///   - onOutput: QEMU 로그 출력 콜백
     func createBaseline(
-        name: String,
         isoPath: String,
         diskSizeGB: Int = 64,
         cpuCores: Int = 4,
@@ -59,31 +60,29 @@ final class BaselineBuilderService: ObservableObject {
         isRunning = true
         defer { isRunning = false }
 
-        let safeName = sanitizeBaselineName(name)
-
         do {
-            // Step 1 — 디렉토리 준비
-            updateProgress(.preparingDisk, detail: "베이스라인 디렉토리 생성 중...")
-            let baselineDir = baselinesDirectory.appendingPathComponent(safeName)
-            guard !fm.fileExists(atPath: baselineDir.path) else {
-                throw BaselineBuilderError.nameAlreadyExists(name)
+            // Step 1 — 디렉토리 준비 (고정 경로, 기존 베이스라인 교체)
+            updateProgress(.preparingDisk, detail: "베이스라인 디렉토리 준비 중...")
+            if fm.fileExists(atPath: baselineDirectory.path) {
+                try fm.removeItem(at: baselineDirectory)
+                onOutput("기존 베이스라인 삭제됨")
             }
-            try fm.createDirectory(at: baselineDir, withIntermediateDirectories: true)
+            try fm.createDirectory(at: baselineDirectory, withIntermediateDirectories: true)
 
-            let diskPath = baselineDir.appendingPathComponent("baseline.qcow2").path
-            let efiVarsPath = baselineDir.appendingPathComponent("efi-vars.fd").path
+            let diskPath = baselineDirectory.appendingPathComponent("baseline.qcow2").path
+            let efiVarsPath = baselineDirectory.appendingPathComponent("efi-vars.fd").path
 
             // 초기 메타데이터 (creating 상태)
             var baseline = BaselineImage(
-                name: name,
+                name: "Windows 11 \(architecture == .aarch64 ? "ARM64" : "x86_64")",
                 diskPath: diskPath,
                 efiVarsPath: efiVarsPath,
-                windowsVersion: "Windows 11 ARM64",
+                windowsVersion: "Windows 11 \(architecture == .aarch64 ? "ARM64" : "x86_64")",
                 diskSizeGB: diskSizeGB,
                 architecture: architecture,
                 status: .creating
             )
-            try saveMetadata(baseline, to: baselineDir)
+            try saveMetadata(baseline, to: baselineDirectory)
             currentBaseline = baseline
 
             // Step 2 — 빈 qcow2 디스크 생성
@@ -98,7 +97,7 @@ final class BaselineBuilderService: ObservableObject {
 
             // Step 4 — Unattend 미디어 생성
             updateProgress(.generatingUnattend, detail: "autounattend.xml 생성 및 ISO 패키징...")
-            let unattendISOPath = baselineDir.appendingPathComponent("autounattend.iso").path
+            let unattendISOPath = baselineDirectory.appendingPathComponent("autounattend.iso").path
             let unattendParams = UnattendGenerator.Parameters(
                 locale: locale,
                 architecture: architecture
@@ -159,14 +158,14 @@ final class BaselineBuilderService: ObservableObject {
             updateProgress(.finalizingBaseline, detail: "메타데이터 저장 및 임시 파일 정리...")
             baseline.status = .ready
             baseline.createdAt = Date()
-            try saveMetadata(baseline, to: baselineDir)
+            try saveMetadata(baseline, to: baselineDirectory)
             currentBaseline = baseline
 
             // 임시 파일 정리
             try? fm.removeItem(atPath: createdISOPath)
 
-            updateProgress(.completed, detail: "베이스라인 '\(name)' 생성 완료!")
-            onOutput("베이스라인 생성 완료: \(name)")
+            updateProgress(.completed, detail: "베이스라인 생성 완료!")
+            onOutput("베이스라인 생성 완료")
 
         } catch {
             setupProgress = .failed(error.localizedDescription)
@@ -175,8 +174,7 @@ final class BaselineBuilderService: ObservableObject {
             // 에러 시 메타데이터 업데이트
             if var baseline = currentBaseline {
                 baseline.status = .error
-                let baselineDir = baselinesDirectory.appendingPathComponent(safeName)
-                try? saveMetadata(baseline, to: baselineDir)
+                try? saveMetadata(baseline, to: baselineDirectory)
                 currentBaseline = baseline
             }
             throw error
@@ -191,66 +189,28 @@ final class BaselineBuilderService: ObservableObject {
         isRunning = false
     }
 
-    // MARK: - Baseline Management (4.5)
+    // MARK: - Baseline Management (단일 베이스라인)
 
-    /// 저장된 베이스라인 목록
-    func listBaselines() -> [BaselineImage] {
-        guard fm.fileExists(atPath: baselinesDirectory.path) else { return [] }
-        guard let dirs = try? fm.contentsOfDirectory(
-            at: baselinesDirectory,
-            includingPropertiesForKeys: [.isDirectoryKey]
-        ) else { return [] }
-
-        return dirs.compactMap { dir in
-            loadBaseline(from: dir)
-        }.sorted { $0.createdAt > $1.createdAt }
+    /// 단일 베이스라인 로드
+    func loadBaseline() -> BaselineImage? {
+        return loadBaseline(from: baselineDirectory)
     }
 
-    /// 이름으로 베이스라인 로드
-    func loadBaseline(name: String) -> BaselineImage? {
-        let dir = baselinesDirectory.appendingPathComponent(sanitizeBaselineName(name))
-        return loadBaseline(from: dir)
-    }
-
-    /// 베이스라인 삭제
-    func deleteBaseline(id: UUID) throws {
-        guard let baseline = listBaselines().first(where: { $0.id == id }) else {
+    /// 단일 베이스라인 삭제
+    func deleteBaseline() throws {
+        guard fm.fileExists(atPath: baselineDirectory.path) else {
             throw BaselineBuilderError.baselineNotFound
         }
-        let dir = URL(fileURLWithPath: baseline.diskPath).deletingLastPathComponent()
-        try fm.removeItem(at: dir)
+        try fm.removeItem(at: baselineDirectory)
+        currentBaseline = nil
     }
 
-    /// 베이스라인 유효성 검증
-    func validateBaseline(id: UUID) -> Bool {
-        guard let baseline = listBaselines().first(where: { $0.id == id }) else { return false }
+    /// 단일 베이스라인 유효성 검증
+    func validateBaseline() -> Bool {
+        guard let baseline = loadBaseline() else { return false }
         return fm.fileExists(atPath: baseline.diskPath)
             && fm.fileExists(atPath: baseline.efiVarsPath)
             && baseline.status == .ready
-    }
-
-    /// 베이스라인 복제
-    func duplicateBaseline(id: UUID, newName: String) throws {
-        guard let source = listBaselines().first(where: { $0.id == id }) else {
-            throw BaselineBuilderError.baselineNotFound
-        }
-        let safeName = sanitizeBaselineName(newName)
-        let newDir = baselinesDirectory.appendingPathComponent(safeName)
-        guard !fm.fileExists(atPath: newDir.path) else {
-            throw BaselineBuilderError.nameAlreadyExists(newName)
-        }
-
-        let sourceDir = URL(fileURLWithPath: source.diskPath).deletingLastPathComponent()
-        try fm.copyItem(at: sourceDir, to: newDir)
-
-        // 메타데이터 업데이트
-        var newBaseline = source
-        newBaseline.id = UUID()
-        newBaseline.name = newName
-        newBaseline.diskPath = newDir.appendingPathComponent("baseline.qcow2").path
-        newBaseline.efiVarsPath = newDir.appendingPathComponent("efi-vars.fd").path
-        newBaseline.createdAt = Date()
-        try saveMetadata(newBaseline, to: newDir)
     }
 
     // MARK: - Private Helpers
@@ -258,12 +218,6 @@ final class BaselineBuilderService: ObservableObject {
     private func updateProgress(_ progress: SetupProgress, detail: String) {
         setupProgress = progress
         progressDetail = detail
-    }
-
-    private func sanitizeBaselineName(_ name: String) -> String {
-        name.replacingOccurrences(of: " ", with: "_")
-            .replacingOccurrences(of: "/", with: "_")
-            .replacingOccurrences(of: "\\", with: "_")
     }
 
     private func createBlankDisk(at path: String, sizeGB: Int) throws {
@@ -328,15 +282,12 @@ final class BaselineBuilderService: ObservableObject {
 // MARK: - Errors
 
 enum BaselineBuilderError: LocalizedError {
-    case nameAlreadyExists(String)
     case baselineNotFound
     case installationFailed(String)
     case timeout
 
     var errorDescription: String? {
         switch self {
-        case .nameAlreadyExists(let name):
-            return "'\(name)' 베이스라인이 이미 존재합니다."
         case .baselineNotFound:
             return "베이스라인을 찾을 수 없습니다."
         case .installationFailed(let detail):

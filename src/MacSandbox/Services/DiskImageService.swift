@@ -16,7 +16,7 @@ final class DiskImageService {
             sandboxDirectory.appendingPathComponent("images", isDirectory: true),
             sandboxDirectory.appendingPathComponent("overlays", isDirectory: true),
             sandboxDirectory.appendingPathComponent("configs", isDirectory: true),
-            sandboxDirectory.appendingPathComponent("baselines", isDirectory: true),
+            sandboxDirectory.appendingPathComponent("baseline", isDirectory: true),
             sandboxDirectory.appendingPathComponent("drivers", isDirectory: true)
         ]
         for dir in dirs {

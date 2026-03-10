@@ -19,7 +19,7 @@ final class SetupViewModel: ObservableObject {
     @Published var progressDetail: String = ""
     @Published var logOutput: String = ""
 
-    @Published var existingBaselines: [BaselineImage] = []
+    @Published var currentBaseline: BaselineImage?
 
     @Published var errorMessage: String?
     @Published var showError: Bool = false
@@ -31,7 +31,7 @@ final class SetupViewModel: ObservableObject {
     // MARK: - Init
 
     init() {
-        refreshBaselines()
+        refreshBaseline()
     }
 
     // MARK: - Computed
@@ -40,9 +40,12 @@ final class SetupViewModel: ObservableObject {
         baselineService.isRunning
     }
 
+    var hasBaseline: Bool {
+        currentBaseline != nil && currentBaseline?.status == .ready
+    }
+
     var canStartSetup: Bool {
-        !baselineName.isEmpty
-            && selectedISOPath != nil
+        selectedISOPath != nil
             && !isSetupRunning
     }
 
@@ -63,12 +66,12 @@ final class SetupViewModel: ObservableObject {
 
     // MARK: - Actions
 
-    /// 베이스라인 목록 새로고침
-    func refreshBaselines() {
-        existingBaselines = baselineService.listBaselines()
+    /// 단일 베이스라인 새로고침
+    func refreshBaseline() {
+        currentBaseline = baselineService.loadBaseline()
     }
 
-    /// 베이스라인 생성 시작
+    /// 베이스라인 구축/재구축 시작
     func startSetup() {
         guard canStartSetup, let isoPath = selectedISOPath else { return }
 
@@ -88,7 +91,6 @@ final class SetupViewModel: ObservableObject {
 
             do {
                 try await baselineService.createBaseline(
-                    name: baselineName,
                     isoPath: isoPath,
                     diskSizeGB: diskSizeGB,
                     cpuCores: cpuCores,
@@ -102,8 +104,8 @@ final class SetupViewModel: ObservableObject {
                     }
                 )
                 progress = .completed
-                progressDetail = "베이스라인 '\(baselineName)' 생성 완료!"
-                refreshBaselines()
+                progressDetail = "베이스라인 생성 완료!"
+                refreshBaseline()
             } catch {
                 progress = .failed(error.localizedDescription)
                 showError(error.localizedDescription)
@@ -134,21 +136,11 @@ final class SetupViewModel: ObservableObject {
         }
     }
 
-    /// 베이스라인 삭제
-    func deleteBaseline(id: UUID) {
+    /// 단일 베이스라인 삭제
+    func deleteBaseline() {
         do {
-            try baselineService.deleteBaseline(id: id)
-            refreshBaselines()
-        } catch {
-            showError(error.localizedDescription)
-        }
-    }
-
-    /// 베이스라인 복제
-    func duplicateBaseline(id: UUID, newName: String) {
-        do {
-            try baselineService.duplicateBaseline(id: id, newName: newName)
-            refreshBaselines()
+            try baselineService.deleteBaseline()
+            refreshBaseline()
         } catch {
             showError(error.localizedDescription)
         }

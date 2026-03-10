@@ -3,8 +3,11 @@
 ## 개요
 
 Windows 11 ARM64 ESD를 다운로드하여 무인 설치(Unattended Install)를 수행하고,
-설치 완료된 디스크 이미지를 **베이스라인 이미지**로 보존한 뒤,
+설치 완료된 디스크 이미지를 **단일 베이스라인 이미지**로 보존한 뒤,
 샌드박스 실행 시마다 Copy-on-Write(COW) 오버레이를 생성하여 일회용 환경을 제공하는 시스템.
+
+> **단일 베이스라인 정책**: Windows Sandbox와 마찬가지로, 시스템에는 항상 하나의 베이스라인 이미지만 존재한다.
+> 새 베이스라인을 구축하면 기존 베이스라인은 자동으로 교체된다.
 
 ```text
 ┌─────────────────────────────────────────────────────────┐
@@ -18,7 +21,7 @@ Windows 11 ARM64 ESD를 다운로드하여 무인 설치(Unattended Install)를 
 ┌─────────────────────────────────────────────────────────┐
 │                   Sandbox Mode (매회)                    │
 │                                                         │
-│  베이스라인 선택 → COW 오버레이 생성 → QEMU 부팅        │
+│  베이스라인 확인 → COW 오버레이 생성 → QEMU 부팅        │
 │  → 사용자 작업 → VM 종료 → 오버레이 삭제 (원상복구)     │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -29,11 +32,12 @@ Windows 11 ARM64 ESD를 다운로드하여 무인 설치(Unattended Install)를 
 
 ### Setup Mode (베이스라인 빌더)
 
-- **목적**: Windows가 설치된 깨끗한 디스크 이미지를 1회 생성
-- **트리거**: 사용자가 "새 베이스라인 만들기" 실행
+- **목적**: Windows가 설치된 깨끗한 디스크 이미지를 1회 생성 (또는 재구축)
+- **트리거**: 사용자가 "베이스라인 구축" 또는 "베이스라인 재구축" 실행
 - **입력**: Windows ARM64 ESD/ISO 파일, (선택) virtio 드라이버 ISO
-- **출력**: `~/Library/Application Support/MacSandbox/baselines/{name}/baseline.qcow2`
+- **출력**: `~/Library/Application Support/MacSandbox/baseline/baseline.qcow2` (고정 경로)
 - **특징**: Sysprep 미사용 — OOBE 완료 상태 그대로 보존하여 부팅 시간 최소화
+- **제약**: 시스템에 단 하나의 베이스라인만 존재 — 재구축 시 기존 이미지 교체
 
 ### Sandbox Mode (일회용 샌드박스)
 
@@ -49,11 +53,10 @@ Windows 11 ARM64 ESD를 다운로드하여 무인 설치(Unattended Install)를 
 
 ```text
 ~/Library/Application Support/MacSandbox/
-├── baselines/                          # 베이스라인 이미지 저장
-│   └── {baseline-name}/
-│       ├── baseline.qcow2              # 설치 완료된 Windows 디스크
-│       ├── efi-vars.fd                 # 해당 베이스라인의 UEFI 변수
-│       └── metadata.json               # 베이스라인 메타데이터
+├── baseline/                           # 단일 베이스라인 이미지 (고정 경로)
+│   ├── baseline.qcow2              # 설치 완료된 Windows 디스크
+│   ├── efi-vars.fd                 # UEFI 변수
+│   └── metadata.json               # 베이스라인 메타데이터 (생성일, 버전 등)
 ├── images/                             # 기존 빈 이미지 (호환 유지)
 ├── overlays/                           # 샌드박스 COW 오버레이 (임시)
 ├── configs/                            # .msb 설정 파일
@@ -75,9 +78,9 @@ Windows 11 ARM64 ESD를 다운로드하여 무인 설치(Unattended Install)를 
 - [x] `src/MacSandbox/Models/BaselineImage.swift` 신규 생성
 - [x] 필드 정의:
   - `id: UUID`
-  - `name: String` — 사용자 지정 이름 (예: "Windows 11 24H2")
-  - `diskPath: String` — baseline.qcow2 절대 경로
-  - `efiVarsPath: String` — efi-vars.fd 절대 경로
+  - `name: String` — 고정값 ("Windows 11 ARM64") 또는 자동 생성
+  - `diskPath: String` — baseline.qcow2 절대 경로 (고정: `baseline/baseline.qcow2`)
+  - `efiVarsPath: String` — efi-vars.fd 절대 경로 (고정: `baseline/efi-vars.fd`)
   - `createdAt: Date`
   - `windowsVersion: String` — 설치된 Windows 버전 정보
   - `diskSizeGB: Int`
@@ -183,8 +186,8 @@ Windows 11 ARM64 ESD를 다운로드하여 무인 설치(Unattended Install)를 
 - [x] `createBaseline(name:isoPath:diskSizeGB:)` async 메서드:
 
   **Step 1 — 디렉토리 준비**
-  - `baselines/{name}/` 디렉토리 생성
-  - 중복 이름 검사
+  - `baseline/` 디렉토리 생성 (고정 경로)
+  - 기존 베이스라인 존재 시 백업 후 교체 또는 에러 처리
 
   **Step 2 — 빈 qcow2 디스크 생성**
   - `qemu-img create -f qcow2 baseline.qcow2 {size}G`
@@ -236,8 +239,8 @@ Windows 11 ARM64 ESD를 다운로드하여 무인 설치(Unattended Install)를 
   -smp 4
   -m 8192
   -drive if=pflash,format=raw,readonly=on,file=edk2-aarch64-code.fd
-  -drive if=pflash,format=raw,file=baselines/{name}/efi-vars.fd
-  -drive file=baselines/{name}/baseline.qcow2,if=none,id=hd0,format=qcow2
+  -drive if=pflash,format=raw,file=baseline/efi-vars.fd
+  -drive file=baseline/baseline.qcow2,if=none,id=hd0,format=qcow2
   -device virtio-blk-pci,drive=hd0
   -drive file=Windows11_ARM64.iso,if=none,id=cdrom0,media=cdrom
   -device virtio-blk-pci,drive=cdrom0,bootindex=0
@@ -268,11 +271,11 @@ Windows 11 ARM64 ESD를 다운로드하여 무인 설치(Unattended Install)를 
 #### 4.5 베이스라인 관리
 
 - [x] `BaselineBuilderService`에 추가 메서드:
-  - `listBaselines() -> [BaselineImage]` — 저장된 베이스라인 목록
-  - `deleteBaseline(id:)` — 베이스라인 삭제 (디렉토리 전체 삭제)
-  - `loadBaseline(name:) -> BaselineImage?` — metadata.json 로드
-  - `validateBaseline(id:) -> Bool` — qcow2 + efi-vars.fd 존재 확인
-  - `duplicateBaseline(id:newName:)` — 베이스라인 복제 (별도 이미지로)
+  - `loadBaseline() -> BaselineImage?` — 단일 베이스라인의 metadata.json 로드
+  - `deleteBaseline()` — 베이스라인 삭제 (`baseline/` 디렉토리 전체 삭제)
+  - `validateBaseline() -> Bool` — qcow2 + efi-vars.fd 존재 확인
+  - ~~`listBaselines()`~~ — 단일 베이스라인 정책으로 불필요
+  - ~~`duplicateBaseline()`~~ — 단일 베이스라인 정책으로 불필요
 
 ---
 
@@ -315,19 +318,19 @@ Windows 11 ARM64 ESD를 다운로드하여 무인 설치(Unattended Install)를 
   - `progress: SetupProgress`
   - `progressPercent: Double`
   - `logOutput: String`
-  - `existingBaselines: [BaselineImage]`
+  - `currentBaseline: BaselineImage?` — 단일 베이스라인 상태
 - [x] 액션 메서드:
-  - `startSetup()` — 베이스라인 생성 시작
+  - `startSetup()` — 베이스라인 구축/재구축 시작
   - `cancelSetup()` — 생성 중단 (VM 강제 종료)
   - `selectISO()` — NSOpenPanel으로 ISO 선택
-  - `deleteBaseline(id:)` — 베이스라인 삭제
+  - `deleteBaseline()` — 단일 베이스라인 삭제
 
 #### 6.2 `SandboxViewModel` 수정
 
-- [x] 베이스라인 목록 로딩 기능 추가:
-  - `availableBaselines: [BaselineImage]`
-  - `selectedBaseline: BaselineImage?`
-- [x] `startSandbox()`에서 베이스라인 기반 시작 지원
+- [x] 단일 베이스라인 로딩 기능 추가:
+  - `currentBaseline: BaselineImage?` — 단일 베이스라인 (없으면 nil)
+  - `hasBaseline: Bool` — 베이스라인 존재 여부
+- [x] `startSandbox()`에서 단일 베이스라인 기반 시작 지원
 - [x] 기존 `baseImagePath` 직접 지정 방식도 호환 유지
 
 ---
@@ -363,31 +366,28 @@ Windows 11 ARM64 ESD를 다운로드하여 무인 설치(Unattended Install)를 
   - 생성된 베이스라인 정보 요약
   - "샌드박스 시작" 바로가기 버튼
 
-#### 7.2 `BaselineManagerView` — 베이스라인 목록 관리
+#### 7.2 `BaselineStatusView` — 베이스라인 상태 표시 (최소 UI)
 
-- [ ] `src/MacSandbox/Views/BaselineManagerView.swift` 신규 생성
-- [ ] 베이스라인 목록 표시:
-  - 이름, 생성일, 디스크 크기, 상태
-  - 상태 아이콘 (ready: 녹색, creating: 노랑 회전, error: 빨강)
-- [ ] 액션:
-  - "새 베이스라인 만들기" → SetupWizardView 열기
-  - 베이스라인 선택 → 샌드박스 시작
-  - 베이스라인 삭제 (확인 다이얼로그)
-  - 베이스라인 복제
+- [ ] `src/MacSandbox/Views/BaselineStatusView.swift` 신규 생성
+- [ ] 단일 베이스라인 상태 표시:
+  - 베이스라인 없음: "베이스라인 이미지가 없습니다. 구축이 필요합니다." + "베이스라인 구축" 버튼
+  - 베이스라인 존재: 생성일, 디스크 크기, 아키텍처 표시
+  - "베이스라인 재구축" 버튼 (확인 다이얼로그 후 기존 이미지 삭제 후 재생성)
+- [ ] 복잡한 목록/선택/복제 UI 불필요 — Windows Sandbox처럼 단일 이미지 정책
 
 #### 7.3 `ContentView` 수정
 
 - [ ] 네비게이션 구조 개선:
-  - 탭 또는 사이드바에 "Setup" / "Sandbox" 모드 전환 추가
-  - 또는 초기 화면에서 베이스라인이 없으면 SetupWizardView 자동 표시
-- [ ] 베이스라인이 존재할 때: 베이스라인 선택 → 바로 샌드박스 시작 플로우
+  - 베이스라인이 없으면 자동으로 SetupWizardView 표시 (초기 설정 유도)
+  - 베이스라인이 존재하면 바로 샌드박스 시작 플로우
+  - BaselineStatusView를 설정 영역에 포함
 
 #### 7.4 `SandboxConfigView` 수정
 
-- [ ] 베이스라인 선택 UI 추가:
-  - 드롭다운/피커로 사용 가능한 베이스라인 목록 표시
-  - 선택 시 `configuration.baseImagePath` 자동 설정
-  - 베이스라인 상태 표시 (ready only 선택 가능)
+- [ ] 베이스라인 상태 표시 UI 추가:
+  - 단일 베이스라인 존재 여부 및 상태 표시 (ready/creating/error)
+  - 베이스라인 없을 시 "베이스라인 구축 필요" 안내 + 구축 버튼
+  - 드롭다운/피커 불필요 — 단일 베이스라인 자동 사용
 
 ---
 
@@ -469,7 +469,7 @@ Windows 11 ARM64 ESD를 다운로드하여 무인 설치(Unattended Install)를 
 | 3 | Phase 3 | Virtio 드라이버 확인 | 없음 |
 | 4 | Phase 4.1–4.3 | BaselineBuilderService 핵심 | Phase 1, 2 |
 | 5 | Phase 4.4 | 설치 완료 감지 | Phase 4.1–4.3 |
-| 6 | Phase 4.5 | 베이스라인 관리 | Phase 4.1 |
+| 6 | Phase 4.5 | 베이스라인 관리 (단일) | Phase 4.1 |
 | 7 | Phase 5 | Sandbox Mode 개선 | Phase 4.5 |
 | 8 | Phase 6 | ViewModel 통합 | Phase 4, 5 |
 | 9 | Phase 7 | UI 구현 | Phase 6 |
@@ -506,6 +506,14 @@ Windows 11 ARM64 ESD를 다운로드하여 무인 설치(Unattended Install)를 
 - ISO로 패키징하는 방식 권장 (가장 호환성 높음)
 - `hdiutil makehybrid`로 macOS에서 ISO 생성 가능
 - virtio-9p는 드라이버 의존성 문제로 설치 단계에서 사용 불가
+
+### 5. 단일 베이스라인 정책
+
+- Windows Sandbox와 동일한 컨셉 — 시스템에 항상 하나의 베이스라인만 존재
+- 복수 베이스라인 관리는 불필요한 복잡성 — 선택/삭제/복제 UI가 필요 없음
+- 새 베이스라인 구축 시 기존 이미지는 자동 교체
+- UI는 최소한: 베이스라인 존재 여부, 생성일, 재구축 버튼만 제공
+- 고정 경로 (`baseline/`) 사용으로 경로 관리 단순화
 
 ---
 
