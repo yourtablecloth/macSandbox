@@ -15,7 +15,9 @@ final class DiskImageService {
             sandboxDirectory,
             sandboxDirectory.appendingPathComponent("images", isDirectory: true),
             sandboxDirectory.appendingPathComponent("overlays", isDirectory: true),
-            sandboxDirectory.appendingPathComponent("configs", isDirectory: true)
+            sandboxDirectory.appendingPathComponent("configs", isDirectory: true),
+            sandboxDirectory.appendingPathComponent("baselines", isDirectory: true),
+            sandboxDirectory.appendingPathComponent("drivers", isDirectory: true)
         ]
         for dir in dirs {
             if !FileManager.default.fileExists(atPath: dir.path) {
@@ -141,6 +143,46 @@ final class DiskImageService {
             includingPropertiesForKeys: [.fileSizeKey]
         )
         return contents.filter { $0.pathExtension == "qcow2" || $0.pathExtension == "img" || $0.pathExtension == "iso" }
+    }
+
+    // MARK: - Baseline Sandbox Support
+
+    /// 샌드박스 디스크 환경 경로
+    struct SandboxDiskPaths {
+        let overlayDiskPath: String
+        let efiVarsPath: String
+    }
+
+    /// 베이스라인 기반 샌드박스 환경 생성
+    /// COW 오버레이 디스크 + efi-vars.fd 복사본을 생성합니다.
+    func createSandboxEnvironment(baseline: BaselineImage, sandboxId: String) throws -> SandboxDiskPaths {
+        try ensureDirectories()
+
+        // COW 오버레이 생성
+        let overlayPath = try createOverlay(baseImagePath: baseline.diskPath, sandboxId: sandboxId)
+
+        // efi-vars.fd 복사 (샌드박스별 독립 UEFI 변수)
+        let efiVarsCopyPath = overlaysDirectory
+            .appendingPathComponent("\(sandboxId)-efi-vars.fd")
+            .path
+        try FileManager.default.copyItem(
+            atPath: baseline.efiVarsPath,
+            toPath: efiVarsCopyPath
+        )
+
+        return SandboxDiskPaths(
+            overlayDiskPath: overlayPath,
+            efiVarsPath: efiVarsCopyPath
+        )
+    }
+
+    /// 샌드박스 환경 전체 정리 (오버레이 + efi-vars 복사본)
+    func removeSandboxEnvironment(sandboxId: String) {
+        removeOverlay(sandboxId: sandboxId)
+        let efiVarsCopyPath = overlaysDirectory
+            .appendingPathComponent("\(sandboxId)-efi-vars.fd")
+            .path
+        try? FileManager.default.removeItem(atPath: efiVarsCopyPath)
     }
 
     // MARK: - Private

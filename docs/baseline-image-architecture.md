@@ -146,23 +146,23 @@ Windows 11 ARM64 ESD를 다운로드하여 무인 설치(Unattended Install)를 
 
 #### 3.1 `VirtioDriverService` 서비스 생성
 
-- [ ] `src/MacSandbox/Services/VirtioDriverService.swift` 신규 생성
-- [ ] virtio-win ISO 다운로드 기능
+- [x] `src/MacSandbox/Services/VirtioDriverService.swift` 신규 생성
+- [x] virtio-win ISO 다운로드 기능
   - 공식 배포 URL: `https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/virtio-win.iso`
   - SHA256 검증
-- [ ] 다운로드 위치: `~/Library/Application Support/MacSandbox/drivers/virtio-win.iso`
-- [ ] 이미 다운로드된 경우 재사용
-- [ ] Windows ARM64용 virtio 드라이버 포함 여부 확인 로직
+- [x] 다운로드 위치: `~/Library/Application Support/MacSandbox/drivers/virtio-win.iso`
+- [x] 이미 다운로드된 경우 재사용
+- [x] Windows ARM64용 virtio 드라이버 포함 여부 확인 로직
   - 필수 드라이버: `viostor` (스토리지), `NetKVM` (네트워크), `viogpudo` (GPU)
   - ARM64 빌드 가용성 확인 (virtio-win이 ARM64를 포함하지 않을 수 있음)
 
 #### 3.2 ARM64 virtio 드라이버 대안 검토
 
-- [ ] virtio-win이 ARM64 드라이버를 포함하지 않는 경우의 대안:
-  - **옵션 A**: QEMU의 `-device virtio-blk-pci` 대신 `-device nvme` 사용 (Windows 기본 드라이버)
+- [x] virtio-win이 ARM64 드라이버를 포함하지 않는 경우의 대안:
+  - **옵션 A**: QEMU의 `-device virtio-blk-pci` 대신 `-device nvme` 사용 (Windows 기본 드라이버) ✅ 채택
   - **옵션 B**: `-device usb-storage` 사용 (느리지만 드라이버 불필요)
   - **옵션 C**: 커뮤니티 빌드된 ARM64 virtio 드라이버 소싱
-- [ ] 선택한 전략에 따라 QEMU 인자 조정
+- [x] 선택한 전략에 따라 QEMU 인자 조정 — `DiskDeviceStrategy` enum으로 아키텍처별 분기
 
 ---
 
@@ -170,9 +170,9 @@ Windows 11 ARM64 ESD를 다운로드하여 무인 설치(Unattended Install)를 
 
 #### 4.1 `BaselineBuilderService` 핵심 구현
 
-- [ ] `src/MacSandbox/Services/BaselineBuilderService.swift` 신규 생성
-- [ ] `@MainActor ObservableObject`로 구현 (진행 상태 UI 바인딩)
-- [ ] Published 프로퍼티:
+- [x] `src/MacSandbox/Services/BaselineBuilderService.swift` 신규 생성
+- [x] `@MainActor ObservableObject`로 구현 (진행 상태 UI 바인딩)
+- [x] Published 프로퍼티:
   - `setupProgress: SetupProgress`
   - `progressDetail: String` — 현재 단계 상세 설명
   - `isRunning: Bool`
@@ -180,7 +180,7 @@ Windows 11 ARM64 ESD를 다운로드하여 무인 설치(Unattended Install)를 
 
 #### 4.2 베이스라인 생성 플로우 구현
 
-- [ ] `createBaseline(name:isoPath:diskSizeGB:)` async 메서드:
+- [x] `createBaseline(name:isoPath:diskSizeGB:)` async 메서드:
 
   **Step 1 — 디렉토리 준비**
   - `baselines/{name}/` 디렉토리 생성
@@ -218,8 +218,8 @@ Windows 11 ARM64 ESD를 다운로드하여 무인 설치(Unattended Install)를 
 
 #### 4.3 Setup Mode QEMU 인자 빌드
 
-- [ ] `QEMUService`에 `buildSetupModeArguments()` 메서드 추가
-- [ ] 기존 `buildAArch64Arguments`와의 차이점:
+- [x] `QEMUService`에 `buildSetupModeArguments()` 메서드 추가
+- [x] 기존 `buildAArch64Arguments`와의 차이점:
   - **디스크**: baseline.qcow2를 직접 연결 (오버레이 아님)
   - **ISO 마운트**: Windows ISO를 CDROM 또는 virtio-blk로 연결
   - **Unattend**: autounattend.iso를 두 번째 CDROM으로 연결
@@ -227,7 +227,7 @@ Windows 11 ARM64 ESD를 다운로드하여 무인 설치(Unattended Install)를 
   - **부팅 순서**: ISO에서 부팅 (`bootindex=0` on ISO device)
   - **UEFI**: 베이스라인 전용 efi-vars.fd 사용
   - **메모리/CPU**: 설치 시에는 더 많은 리소스 할당 권장 (4+ cores, 8GB+ RAM)
-- [ ] 인자 예시 (AArch64):
+- [x] 인자 예시 (AArch64):
 
   ```text
   -machine virt,highmem=on,gic-version=3
@@ -253,21 +253,21 @@ Windows 11 ARM64 ESD를 다운로드하여 무인 설치(Unattended Install)를 
 
 #### 4.4 설치 완료 감지
 
-- [ ] **방법 1 — 프로세스 종료 감지** (권장, 가장 간단)
+- [x] **방법 1 — 프로세스 종료 감지** (권장, 가장 간단) ✅ 채택
   - Unattend의 `FirstLogonCommands`에서 `shutdown /s /t 30`
   - QEMU 프로세스가 종료되면 설치 완료로 판단
   - `Process.terminationHandler` 활용
 - [ ] **방법 2 — QMP 모니터링** (보조)
   - QMP `SHUTDOWN` 이벤트 감지
   - Unix domain socket으로 QMP 연결
-- [ ] 설치 실패 감지:
+- [x] 설치 실패 감지:
   - QEMU가 비정상 종료 (exit code ≠ 0)
   - 타임아웃 초과 (기본 60분)
   - 디스크 이미지 크기가 비정상적으로 작음 (설치 미완료 징후)
 
 #### 4.5 베이스라인 관리
 
-- [ ] `BaselineBuilderService`에 추가 메서드:
+- [x] `BaselineBuilderService`에 추가 메서드:
   - `listBaselines() -> [BaselineImage]` — 저장된 베이스라인 목록
   - `deleteBaseline(id:)` — 베이스라인 삭제 (디렉토리 전체 삭제)
   - `loadBaseline(name:) -> BaselineImage?` — metadata.json 로드
@@ -280,19 +280,19 @@ Windows 11 ARM64 ESD를 다운로드하여 무인 설치(Unattended Install)를 
 
 #### 5.1 베이스라인 기반 샌드박스 시작
 
-- [ ] `SandboxViewModel.startSandbox()` 수정:
+- [x] `SandboxViewModel.startSandbox()` 수정:
   - 베이스라인의 `efi-vars.fd`도 COW 복사하여 사용
-    - 방법: 샌드박스 시작 시 `efi-vars.fd`를 오버레이 디렉토리에 복사
+    - 방법: 샌드박스 시작 시 `efi-vars.fd`를 오버레이 디렉토리에 복사 ✅ 채택
     - 또는 efi-vars도 qcow2 오버레이 사용
   - `buildAArch64Arguments`에서 베이스라인의 efi-vars 경로 사용
-- [ ] `DiskImageService.createOverlay` 확장:
+- [x] `DiskImageService.createOverlay` 확장:
   - 오버레이 생성 시 efi-vars.fd 복사 기능 추가
   - `createSandboxEnvironment(baseline:sandboxId:) -> SandboxDiskPaths` 메서드
   - 반환값: `(overlayDiskPath: String, efiVarsPath: String)`
 
 #### 5.2 샌드박스 정리 로직 개선
 
-- [ ] `onVMStopped()` 수정:
+- [x] `onVMStopped()` 수정:
   - 오버레이 qcow2 삭제 (기존)
   - 복사된 efi-vars.fd도 삭제
   - 임시 파일 전체 정리
@@ -303,9 +303,9 @@ Windows 11 ARM64 ESD를 다운로드하여 무인 설치(Unattended Install)를 
 
 #### 6.1 `SetupViewModel` 생성
 
-- [ ] `src/MacSandbox/ViewModels/SetupViewModel.swift` 신규 생성
-- [ ] BaselineBuilderService를 래핑하는 ViewModel
-- [ ] 바인딩 프로퍼티:
+- [x] `src/MacSandbox/ViewModels/SetupViewModel.swift` 신규 생성
+- [x] BaselineBuilderService를 래핑하는 ViewModel
+- [x] 바인딩 프로퍼티:
   - `baselineName: String`
   - `selectedISOPath: String?`
   - `diskSizeGB: Int` (기본: 64)
@@ -316,7 +316,7 @@ Windows 11 ARM64 ESD를 다운로드하여 무인 설치(Unattended Install)를 
   - `progressPercent: Double`
   - `logOutput: String`
   - `existingBaselines: [BaselineImage]`
-- [ ] 액션 메서드:
+- [x] 액션 메서드:
   - `startSetup()` — 베이스라인 생성 시작
   - `cancelSetup()` — 생성 중단 (VM 강제 종료)
   - `selectISO()` — NSOpenPanel으로 ISO 선택
@@ -324,11 +324,11 @@ Windows 11 ARM64 ESD를 다운로드하여 무인 설치(Unattended Install)를 
 
 #### 6.2 `SandboxViewModel` 수정
 
-- [ ] 베이스라인 목록 로딩 기능 추가:
+- [x] 베이스라인 목록 로딩 기능 추가:
   - `availableBaselines: [BaselineImage]`
   - `selectedBaseline: BaselineImage?`
-- [ ] `startSandbox()`에서 베이스라인 기반 시작 지원
-- [ ] 기존 `baseImagePath` 직접 지정 방식도 호환 유지
+- [x] `startSandbox()`에서 베이스라인 기반 시작 지원
+- [x] 기존 `baseImagePath` 직접 지정 방식도 호환 유지
 
 ---
 

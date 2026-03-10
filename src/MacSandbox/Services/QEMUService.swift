@@ -105,6 +105,7 @@ final class QEMUService {
     func startVM(
         configuration: SandboxConfiguration,
         overlayDiskPath: String,
+        efiVarsOverridePath: String? = nil,
         onStateChange: @escaping (VMState) -> Void,
         onOutput: @escaping (String) -> Void
     ) throws -> QEMUProcessInfo {
@@ -116,7 +117,7 @@ final class QEMUService {
         let socketPath = (socketDir as NSString).appendingPathComponent("macsandbox-monitor-\(UUID().uuidString).sock")
         self.monitorSocketPath = socketPath
 
-        let args = buildArguments(configuration: configuration, overlayDiskPath: overlayDiskPath, monitorSocketPath: socketPath)
+        let args = buildArguments(configuration: configuration, overlayDiskPath: overlayDiskPath, monitorSocketPath: socketPath, efiVarsOverridePath: efiVarsOverridePath)
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: qemuPath)
@@ -206,14 +207,16 @@ final class QEMUService {
     private func buildArguments(
         configuration: SandboxConfiguration,
         overlayDiskPath: String,
-        monitorSocketPath: String
+        monitorSocketPath: String,
+        efiVarsOverridePath: String? = nil
     ) -> [String] {
         switch configuration.guestArch {
         case .aarch64:
             return buildAArch64Arguments(
                 configuration: configuration,
                 overlayDiskPath: overlayDiskPath,
-                monitorSocketPath: monitorSocketPath
+                monitorSocketPath: monitorSocketPath,
+                efiVarsOverridePath: efiVarsOverridePath
             )
         case .x86_64:
             return buildX86_64Arguments(
@@ -228,7 +231,8 @@ final class QEMUService {
     private func buildAArch64Arguments(
         configuration: SandboxConfiguration,
         overlayDiskPath: String,
-        monitorSocketPath: String
+        monitorSocketPath: String,
+        efiVarsOverridePath: String? = nil
     ) -> [String] {
         var args: [String] = []
 
@@ -250,8 +254,10 @@ final class QEMUService {
             args += [
                 "-drive", "if=pflash,format=raw,file=\(firmwarePath),readonly=on"
             ]
-            // EFI 변수 저장소 (VM별 복사본)
-            if let varsPath = ensureEfiVarsFile() {
+            // EFI 변수 저장소 (베이스라인 오버라이드 또는 VM별 복사본)
+            if let overridePath = efiVarsOverridePath {
+                args += ["-drive", "if=pflash,format=raw,file=\(overridePath)"]
+            } else if let varsPath = ensureEfiVarsFile() {
                 args += ["-drive", "if=pflash,format=raw,file=\(varsPath)"]
             }
         }
@@ -412,6 +418,256 @@ final class QEMUService {
         return args
     }
 
+    // MARK: - Setup Mode (Baseline Builder)
+
+    /// Setup Mode용 QEMU 인자 빌드 — Windows 설치를 위한 구성
+    func buildSetupModeArguments(
+        architecture: SandboxConfiguration.GuestArchitecture,
+        baselineDiskPath: String,
+        efiVarsPath: String,
+        windowsISOPath: String,
+        unattendISOPath: String,
+        virtioISOPath: String?,
+        cpuCores: Int,
+        memoryMB: Int,
+        diskStrategy: VirtioDriverService.DiskDeviceStrategy,
+        monitorSocketPath: String? = nil
+    ) -> [String] {
+        switch architecture {
+        case .aarch64:
+            return buildSetupAArch64Arguments(
+                baselineDiskPath: baselineDiskPath,
+                efiVarsPath: efiVarsPath,
+                windowsISOPath: windowsISOPath,
+                unattendISOPath: unattendISOPath,
+                virtioISOPath: virtioISOPath,
+                cpuCores: cpuCores,
+                memoryMB: memoryMB,
+                diskStrategy: diskStrategy,
+                monitorSocketPath: monitorSocketPath
+            )
+        case .x86_64:
+            return buildSetupX86_64Arguments(
+                baselineDiskPath: baselineDiskPath,
+                efiVarsPath: efiVarsPath,
+                windowsISOPath: windowsISOPath,
+                unattendISOPath: unattendISOPath,
+                virtioISOPath: virtioISOPath,
+                cpuCores: cpuCores,
+                memoryMB: memoryMB,
+                diskStrategy: diskStrategy,
+                monitorSocketPath: monitorSocketPath
+            )
+        }
+    }
+
+    /// Setup Mode AArch64 인자
+    private func buildSetupAArch64Arguments(
+        baselineDiskPath: String,
+        efiVarsPath: String,
+        windowsISOPath: String,
+        unattendISOPath: String,
+        virtioISOPath: String?,
+        cpuCores: Int,
+        memoryMB: Int,
+        diskStrategy: VirtioDriverService.DiskDeviceStrategy,
+        monitorSocketPath: String?
+    ) -> [String] {
+        var args: [String] = []
+
+        args += ["-machine", "virt,highmem=on,gic-version=3"]
+        args += ["-accel", "hvf"]
+        args += ["-cpu", "host"]
+        args += ["-smp", "\(cpuCores)"]
+        args += ["-m", "\(memoryMB)"]
+
+        // UEFI 펌웨어 (pflash)
+        if let firmwarePath = findEdk2Firmware("edk2-aarch64-code.fd") {
+            args += ["-drive", "if=pflash,format=raw,file=\(firmwarePath),readonly=on"]
+        }
+        args += ["-drive", "if=pflash,format=raw,file=\(efiVarsPath)"]
+
+        // 시스템 디스크 (baseline.qcow2 직접 연결)
+        let (driveOpt, deviceOpt) = diskStrategy.qemuDeviceArgs
+        args += ["-drive", "file=\(baselineDiskPath),\(driveOpt)"]
+        args += ["-device", deviceOpt]
+
+        // Windows ISO (부팅 소스 — bootindex=0)
+        args += ["-drive", "file=\(windowsISOPath),media=cdrom,if=none,id=cdrom0"]
+        args += ["-device", "virtio-blk-pci,drive=cdrom0,bootindex=0"]
+
+        // Unattend ISO
+        args += ["-drive", "file=\(unattendISOPath),media=cdrom,if=none,id=cdrom1"]
+        args += ["-device", "virtio-blk-pci,drive=cdrom1"]
+
+        // Virtio 드라이버 ISO (있는 경우)
+        if let virtioISO = virtioISOPath {
+            args += ["-drive", "file=\(virtioISO),media=cdrom,if=none,id=cdrom2"]
+            args += ["-device", "virtio-blk-pci,drive=cdrom2"]
+        }
+
+        // 디스플레이
+        args += ["-device", "virtio-gpu-pci"]
+        args += ["-display", "cocoa"]
+
+        // USB
+        args += ["-device", "qemu-xhci"]
+        args += ["-device", "usb-kbd"]
+        args += ["-device", "usb-tablet"]
+
+        // 네트워크 (설치 시 NAT)
+        args += ["-nic", "user,model=virtio-net-pci"]
+
+        // RTC
+        args += ["-rtc", "base=localtime,clock=host"]
+
+        // QMP 모니터
+        if let socket = monitorSocketPath {
+            args += ["-qmp", "unix:\(socket),server,nowait"]
+        }
+
+        return args
+    }
+
+    /// Setup Mode x86_64 인자
+    private func buildSetupX86_64Arguments(
+        baselineDiskPath: String,
+        efiVarsPath: String,
+        windowsISOPath: String,
+        unattendISOPath: String,
+        virtioISOPath: String?,
+        cpuCores: Int,
+        memoryMB: Int,
+        diskStrategy: VirtioDriverService.DiskDeviceStrategy,
+        monitorSocketPath: String?
+    ) -> [String] {
+        var args: [String] = []
+
+        args += ["-machine", "q35"]
+        args += ["-accel", "hvf"]
+        args += ["-cpu", "host"]
+        args += ["-smp", "\(cpuCores)"]
+        args += ["-m", "\(memoryMB)"]
+
+        // UEFI
+        if let ovmfPath = findEdk2Firmware("edk2-x86_64-code.fd") {
+            args += ["-bios", ovmfPath]
+        }
+
+        // 시스템 디스크
+        let (driveOpt, deviceOpt) = diskStrategy.qemuDeviceArgs
+        args += ["-drive", "file=\(baselineDiskPath),\(driveOpt)"]
+        args += ["-device", deviceOpt]
+
+        // Windows ISO
+        args += ["-cdrom", windowsISOPath]
+
+        // Unattend ISO
+        args += ["-drive", "file=\(unattendISOPath),media=cdrom,if=none,id=cdrom1"]
+        args += ["-device", "ide-cd,drive=cdrom1"]
+
+        // Virtio 드라이버 ISO
+        if let virtioISO = virtioISOPath {
+            args += ["-drive", "file=\(virtioISO),media=cdrom,if=none,id=cdrom2"]
+            args += ["-device", "ide-cd,drive=cdrom2"]
+        }
+
+        // 디스플레이
+        args += ["-device", "virtio-vga"]
+        args += ["-display", "cocoa"]
+
+        // USB
+        args += ["-device", "usb-ehci"]
+        args += ["-device", "usb-tablet"]
+
+        // 네트워크
+        args += ["-nic", "user,model=virtio-net-pci"]
+
+        // QMP
+        if let socket = monitorSocketPath {
+            args += ["-qmp", "unix:\(socket),server,nowait"]
+        }
+
+        return args
+    }
+
+    /// Setup Mode VM 실행 (프로세스 종료까지 대기)
+    /// - Returns: QEMU 프로세스 exit code
+    func runSetupVM(
+        architecture: SandboxConfiguration.GuestArchitecture,
+        arguments: [String],
+        timeoutSeconds: TimeInterval,
+        onOutput: @escaping (String) -> Void
+    ) async throws -> Int32 {
+        guard let qemuPath = findQEMUExecutable(for: architecture) else {
+            throw QEMUError.executableNotFound
+        }
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: qemuPath)
+        process.arguments = arguments
+
+        var env = ProcessInfo.processInfo.environment
+        if let vendorDir = bundledVendorDirectory() {
+            env["DYLD_LIBRARY_PATH"] = (vendorDir as NSString).appendingPathComponent("lib")
+            env["QEMU_DATADIR"] = (vendorDir as NSString).appendingPathComponent("share/qemu")
+        }
+        process.environment = env
+
+        let outputPipe = Pipe()
+        let errorPipe = Pipe()
+        process.standardOutput = outputPipe
+        process.standardError = errorPipe
+
+        outputPipe.fileHandleForReading.readabilityHandler = { handle in
+            let data = handle.availableData
+            if let str = String(data: data, encoding: .utf8), !str.isEmpty {
+                onOutput(str)
+            }
+        }
+        errorPipe.fileHandleForReading.readabilityHandler = { handle in
+            let data = handle.availableData
+            if let str = String(data: data, encoding: .utf8), !str.isEmpty {
+                onOutput("[stderr] \(str)")
+            }
+        }
+
+        // Store for cancellation support
+        self.process = process
+
+        return try await withCheckedThrowingContinuation { continuation in
+            let didResume = LockedFlag()
+
+            // 타임아웃 처리
+            let timeoutWork = DispatchWorkItem { [weak self] in
+                if process.isRunning {
+                    onOutput("설치 타임아웃 (\(Int(timeoutSeconds))초) 초과 — VM 종료 중...")
+                    self?.process?.terminate()
+                }
+            }
+            DispatchQueue.global().asyncAfter(deadline: .now() + timeoutSeconds, execute: timeoutWork)
+
+            process.terminationHandler = { proc in
+                timeoutWork.cancel()
+                outputPipe.fileHandleForReading.readabilityHandler = nil
+                errorPipe.fileHandleForReading.readabilityHandler = nil
+                if didResume.testAndSet() {
+                    continuation.resume(returning: proc.terminationStatus)
+                }
+            }
+
+            do {
+                try process.run()
+                onOutput("QEMU 프로세스 시작됨 (PID: \(process.processIdentifier))")
+            } catch {
+                timeoutWork.cancel()
+                if didResume.testAndSet() {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
     // MARK: - Firmware Helpers
 
     /// 번들된 EDK2 펀웨어 파일 탐색
@@ -514,5 +770,20 @@ enum QEMUError: LocalizedError {
         case .alreadyRunning:
             return "VM이 이미 실행 중입니다."
         }
+    }
+}
+
+/// Thread-safe one-shot flag for continuation resumption
+private final class LockedFlag: @unchecked Sendable {
+    private var _value = false
+    private let lock = NSLock()
+
+    /// Returns `true` on the first call, `false` on all subsequent calls.
+    func testAndSet() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        if _value { return false }
+        _value = true
+        return true
     }
 }

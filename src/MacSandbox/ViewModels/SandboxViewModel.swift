@@ -16,11 +16,18 @@ final class SandboxViewModel: ObservableObject {
     @Published var availableBaseImages: [URL] = []
     @Published var currentSandboxId: String?
 
+    // Baseline support
+    @Published var availableBaselines: [BaselineImage] = []
+    @Published var selectedBaseline: BaselineImage?
+    /// true이면 selectedBaseline 기반으로 시작, false이면 기존 baseImagePath 방식
+    @Published var useBaselineMode: Bool = false
+
     // MARK: - Services
 
     private let qemuService = QEMUService()
     private let diskImageService = DiskImageService()
     private lazy var configService = ConfigurationService(diskImageService: diskImageService)
+    private let baselineService = BaselineBuilderService()
 
     // MARK: - Init
 
@@ -35,6 +42,7 @@ final class SandboxViewModel: ObservableObject {
         do {
             availableBaseImages = try diskImageService.listBaseImages()
             savedConfigurations = try configService.listSavedConfigurations()
+            availableBaselines = baselineService.listBaselines()
         } catch {
             showError(error.localizedDescription)
         }
@@ -43,6 +51,16 @@ final class SandboxViewModel: ObservableObject {
     /// 샌드박스 시작
     func startSandbox() {
         guard vmState == .stopped else { return }
+
+        // 베이스라인 모드 vs 기존 모드
+        if useBaselineMode {
+            guard let baseline = selectedBaseline, baseline.status == .ready else {
+                showError("사용 가능한 베이스라인을 선택해주세요.")
+                return
+            }
+            configuration.baseImagePath = baseline.diskPath
+        }
+
         guard !configuration.baseImagePath.isEmpty else {
             showError("베이스 이미지를 선택해주세요.")
             return
@@ -55,15 +73,31 @@ final class SandboxViewModel: ObservableObject {
 
         Task {
             do {
-                let overlayPath = try diskImageService.createOverlay(
-                    baseImagePath: configuration.baseImagePath,
-                    sandboxId: sandboxId
-                )
+                let overlayPath: String
+                var sandboxEfiVarsPath: String?
+
+                if useBaselineMode, let baseline = selectedBaseline {
+                    // 베이스라인 기반: overlay + efi-vars 복사
+                    let env = try diskImageService.createSandboxEnvironment(
+                        baseline: baseline,
+                        sandboxId: sandboxId
+                    )
+                    overlayPath = env.overlayDiskPath
+                    sandboxEfiVarsPath = env.efiVarsPath
+                    appendLog("베이스라인 샌드박스 환경 생성: \(baseline.name)")
+                } else {
+                    // 기존 방식: overlay만
+                    overlayPath = try diskImageService.createOverlay(
+                        baseImagePath: configuration.baseImagePath,
+                        sandboxId: sandboxId
+                    )
+                }
                 appendLog("오버레이 디스크 생성: \(overlayPath)")
 
                 _ = try qemuService.startVM(
                     configuration: configuration,
                     overlayDiskPath: overlayPath,
+                    efiVarsOverridePath: sandboxEfiVarsPath,
                     onStateChange: { [weak self] state in
                         Task { @MainActor in
                             self?.vmState = state
@@ -193,8 +227,13 @@ final class SandboxViewModel: ObservableObject {
 
     private func onVMStopped() {
         if configuration.disposable, let sandboxId = currentSandboxId {
-            diskImageService.removeOverlay(sandboxId: sandboxId)
-            appendLog("일회성 샌드박스: 오버레이 디스크 삭제됨")
+            if useBaselineMode {
+                diskImageService.removeSandboxEnvironment(sandboxId: sandboxId)
+                appendLog("일회성 샌드박스: 오버레이 디스크 및 EFI 변수 삭제됨")
+            } else {
+                diskImageService.removeOverlay(sandboxId: sandboxId)
+                appendLog("일회성 샌드박스: 오버레이 디스크 삭제됨")
+            }
         }
         currentSandboxId = nil
     }
