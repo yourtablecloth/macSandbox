@@ -1,0 +1,24 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:macSandbox}",
+            "name": "Debug MacSandbox",
+            "target": "MacSandbox",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug MacSandbox"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:macSandbox}",
+            "name": "Release MacSandbox",
+            "target": "MacSandbox",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release MacSandbox"
+        }
+    ]
+}
