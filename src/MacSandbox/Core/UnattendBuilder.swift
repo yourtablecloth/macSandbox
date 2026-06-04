@@ -8,8 +8,14 @@ final class UnattendBuilder {
 
     /// DISM 오프라인 적용 후 첫 부팅용 Panther unattend.
     /// oobeSystem 패스만 사용(specialize에 RunSynchronous를 넣으면 일부 25H2 빌드가 응답 파일을 거부).
-    /// 부트스트랩 관리자 계정으로 자동 로그온 → FirstLogonCommands로 내장 WDAGUtilityAccount를
-    /// 활성화하고 영구 자동 로그온을 설정 → 종료. (이후 샌드박스 부팅 시 WDAGUtilityAccount로 자동 로그온)
+    /// 부트스트랩 관리자 계정(sandboxsetup)으로 자동 로그온 → FirstLogonCommands로 내장
+    /// WDAGUtilityAccount를 활성화(빈 암호·관리자)하고 RDP를 켠 뒤, **마지막에 부트스트랩 계정을
+    /// 비활성화**(net user /active:no)하고 종료한다.
+    /// 샌드박스 사용은 RDP(WDAGUtilityAccount) 단독 세션. 콘솔 자동 로그온이 살아 있으면 단일 세션
+    /// 클라이언트 SKU에서 RDP 세션과 경합(로그온 충돌)한다. 실측 결과:
+    ///  - WDAGUtilityAccount는 특수 계정이라 콘솔 자동 로그온 대상이 될 수 없음(클린 콜드부팅도 sandboxsetup).
+    ///  - `AutoAdminLogon=0`만으로는 OOBE의 fresh-부팅 최초 자동 로그온을 못 막음.
+    ///  → 부트스트랩 계정 자체를 비활성화해야 콘솔 세션이 생기지 않는다(콘솔엔 '계정 사용 불가' 안내만 표시).
     func generatePantherXML(config: InstallConfig) -> String {
         let locale = config.locale
         let winlogon = "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon"
@@ -75,23 +81,23 @@ final class UnattendBuilder {
                         </SynchronousCommand>
                         <SynchronousCommand wcm:action="add">
                             <Order>4</Order>
-                            <CommandLine>reg add "\(winlogon)" /v AutoAdminLogon /t REG_SZ /d 1 /f</CommandLine>
-                            <Description>autologon on</Description>
+                            <CommandLine>reg add "\(winlogon)" /v AutoAdminLogon /t REG_SZ /d 0 /f</CommandLine>
+                            <Description>disable console autologon — RDP(WDAGUtilityAccount) is the sole interactive session; console autologon would race it on single-session client SKU</Description>
                         </SynchronousCommand>
                         <SynchronousCommand wcm:action="add">
                             <Order>5</Order>
-                            <CommandLine>reg add "\(winlogon)" /v DefaultUserName /t REG_SZ /d WDAGUtilityAccount /f</CommandLine>
-                            <Description>autologon user</Description>
+                            <CommandLine>reg delete "\(winlogon)" /v AutoLogonCount /f</CommandLine>
+                            <Description>remove unattend LogonCount leftover (would re-trigger console autologon)</Description>
                         </SynchronousCommand>
                         <SynchronousCommand wcm:action="add">
                             <Order>6</Order>
-                            <CommandLine>reg add "\(winlogon)" /v DefaultPassword /t REG_SZ /d "" /f</CommandLine>
-                            <Description>autologon password</Description>
+                            <CommandLine>reg delete "\(winlogon)" /v DefaultPassword /f</CommandLine>
+                            <Description>clear stored autologon credential</Description>
                         </SynchronousCommand>
                         <SynchronousCommand wcm:action="add">
                             <Order>7</Order>
-                            <CommandLine>reg add "\(winlogon)" /v DefaultDomainName /t REG_SZ /d . /f</CommandLine>
-                            <Description>autologon domain</Description>
+                            <CommandLine>reg add "\(winlogon)" /v DisableAutomaticRestartSignOn /t REG_DWORD /d 1 /f</CommandLine>
+                            <Description>disable ARSO so a guest reboot does not auto-restore a console session that would race RDP</Description>
                         </SynchronousCommand>
                         <SynchronousCommand wcm:action="add">
                             <Order>8</Order>
@@ -120,6 +126,11 @@ final class UnattendBuilder {
                         </SynchronousCommand>
                         <SynchronousCommand wcm:action="add">
                             <Order>13</Order>
+                            <CommandLine>cmd /c net user sandboxsetup /active:no</CommandLine>
+                            <Description>disable bootstrap account so it cannot console-autologon (AutoAdminLogon=0 alone does not stop the OOBE first-boot autologon; disabling the account does). RDP(WDAGUtilityAccount) becomes the sole session.</Description>
+                        </SynchronousCommand>
+                        <SynchronousCommand wcm:action="add">
+                            <Order>14</Order>
                             <CommandLine>cmd /c shutdown /s /t 15 /f</CommandLine>
                             <Description>shutdown to finalize baseline</Description>
                         </SynchronousCommand>
