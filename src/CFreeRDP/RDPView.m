@@ -16,7 +16,7 @@
 #import "CFreeRDP.h"
 
 @interface RDPView ()
-- (void)ingestFrame:(const uint8_t *)bgrx width:(int)w height:(int)h stride:(int)stride;
+- (void)ingestImage:(CGImageRef)img width:(int)w height:(int)h frameMs:(double)ms;
 @end
 
 // 이 파일은 AppKit만 import한다. freerdp/winpr 타입은 rdp_engine(plain C)에 격리되어
@@ -25,13 +25,18 @@
 @implementation RDPView {
     RDPEngine *_engine;
     NSLock *_lock;
-    uint8_t *_buf;       // 표시용 BGRX32 사본
-    int _w, _h, _stride;
+    int _w, _h;                 // 현재 RDP 프레임 크기(입력 좌표 매핑용)
+    CGImageRef _pendingImage;   // 최신 프레임(코얼레싱) — 메인에서 layer.contents로 소비
 
-    NSTimer *_clipTimer;     // 로컬 NSPasteboard 변경 감시
+    NSTimer *_clipTimer;        // 로컬 NSPasteboard 변경 감시
     NSInteger _lastChangeCount;
     NSEventModifierFlags _prevMods;
     BOOL _gotFirstFrame;
+
+    // 렌더 계측(프레임률·이미지 생성 시간)
+    double _frameMsAccum;
+    int _frameCount;
+    CFAbsoluteTime _lastReport;
 }
 
 - (instancetype)initWithFrame:(NSRect)frameRect {
@@ -41,6 +46,9 @@
         _statusText = @"대기";
         self.wantsLayer = YES;
         self.layer.backgroundColor = NSColor.blackColor.CGColor;
+        // RDP 프레임을 layer.contents로 직접 올려 GPU가 합성·스케일(드로잉 CPU 스케일 제거).
+        self.layer.contentsGravity = kCAGravityResize;
+        self.layerContentsRedrawPolicy = NSViewLayerContentsRedrawNever;
     }
     return self;
 }
@@ -51,9 +59,24 @@
 
 #pragma mark - 엔진 콜백 (연결 스레드에서 호출)
 
+// BGRX32(top-down) 버퍼 → 불투명 CGImage(버퍼 복사 — 이후 재사용 안전).
+static CGImageRef rv_make_image(const uint8_t *bgrx, int w, int h, int stride) {
+    CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
+    CGContextRef bmp = CGBitmapContextCreate((void *)bgrx, w, h, 8, stride, cs,
+        kCGImageAlphaNoneSkipFirst | kCGBitmapByteOrder32Little);
+    CGImageRef img = bmp ? CGBitmapContextCreateImage(bmp) : NULL;
+    if (bmp) CGContextRelease(bmp);
+    CGColorSpaceRelease(cs);
+    return img;
+}
+
 static void rv_on_frame(void *ud, const uint8_t *bgrx, int w, int h, int stride) {
     RDPView *self = (__bridge RDPView *)ud;
-    [self ingestFrame:bgrx width:w height:h stride:stride];
+    if (!bgrx || w <= 0 || h <= 0) return;
+    CFAbsoluteTime t0 = CFAbsoluteTimeGetCurrent();
+    CGImageRef img = rv_make_image(bgrx, w, h, stride);
+    double ms = (CFAbsoluteTimeGetCurrent() - t0) * 1000.0;
+    if (img) [self ingestImage:img width:w height:h frameMs:ms]; // 소유권 이전
 }
 
 static void rv_on_status(void *ud, const char *status) {
@@ -96,50 +119,39 @@ static void rv_on_remote_files(void *ud, const char *const *paths, int count) {
     });
 }
 
-- (void)ingestFrame:(const uint8_t *)bgrx width:(int)w height:(int)h stride:(int)stride {
-    if (!bgrx || w <= 0 || h <= 0) return;
+#pragma mark - 렌더 (CGImage → layer.contents, GPU 합성)
+
+// 최신 프레임만 보관(코얼레싱) 후 메인에서 소비. img 소유권을 가져간다.
+- (void)ingestImage:(CGImageRef)img width:(int)w height:(int)h frameMs:(double)ms {
     [_lock lock];
-    size_t size = (size_t)h * stride;
-    if (!_buf || _h != h || _stride != stride) {
-        free(_buf);
-        _buf = malloc(size);
-        _w = w; _h = h; _stride = stride;
-    }
-    if (_buf) memcpy(_buf, bgrx, size);
+    _w = w; _h = h;
+    CGImageRef old = _pendingImage;
+    _pendingImage = img;
+    _frameMsAccum += ms; _frameCount++;
     [_lock unlock];
-    dispatch_async(dispatch_get_main_queue(), ^{
-        self.needsDisplay = YES;
-        if (!self->_gotFirstFrame) {
-            self->_gotFirstFrame = YES;
-            if (self.onFirstFrame) self.onFirstFrame();
-        }
-    });
+    if (old) CGImageRelease(old);   // 화면에 못 올라간 이전 프레임 폐기
+    dispatch_async(dispatch_get_main_queue(), ^{ [self consumePending]; });
 }
 
-#pragma mark - 렌더
-
-- (void)drawRect:(NSRect)dirtyRect {
+- (void)consumePending {
     [_lock lock];
-    if (!_buf || _w == 0 || _h == 0) {
-        [_lock unlock];
-        [NSColor.blackColor setFill]; NSRectFill(dirtyRect);
-        return;
-    }
-    int w = _w, h = _h, stride = _stride;
-    CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
-    CGContextRef bmp = CGBitmapContextCreate(_buf, w, h, 8, stride, cs,
-        kCGImageAlphaNoneSkipFirst | kCGBitmapByteOrder32Little);
-    CGImageRef img = bmp ? CGBitmapContextCreateImage(bmp) : NULL;
+    CGImageRef img = _pendingImage; _pendingImage = NULL;
+    CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
+    if (_lastReport == 0) _lastReport = now;
+    BOOL report = (now - _lastReport >= 2.0) && _frameCount > 0;
+    double avgMs = report ? _frameMsAccum / _frameCount : 0;
+    double fps = report ? _frameCount / (now - _lastReport) : 0;
+    if (report) { _frameMsAccum = 0; _frameCount = 0; _lastReport = now; }
     [_lock unlock];
+    if (!img) return;                            // 이미 더 최신 프레임이 처리됨
 
-    if (img) {
-        NSImage *nsimg = [[NSImage alloc] initWithCGImage:img size:NSMakeSize(w, h)];
-        [nsimg drawInRect:self.bounds fromRect:NSZeroRect
-                operation:NSCompositingOperationCopy fraction:1.0];
-        CGImageRelease(img);
+    self.layer.contents = (__bridge id)img;      // GPU 업로드+합성+스케일
+    CGImageRelease(img);
+    if (report) NSLog(@"[RDPView] render %.0f fps, img생성 %.2f ms/frame", fps, avgMs);
+    if (!_gotFirstFrame) {
+        _gotFirstFrame = YES;
+        if (self.onFirstFrame) self.onFirstFrame();
     }
-    if (bmp) CGContextRelease(bmp);
-    CGColorSpaceRelease(cs);
 }
 
 #pragma mark - 입력 (마우스/키보드 → 게스트)
@@ -274,7 +286,7 @@ static void rv_on_remote_files(void *ud, const char *const *paths, int count) {
 
 - (void)dealloc {
     [self disconnect];
-    free(_buf);
+    if (_pendingImage) CGImageRelease(_pendingImage);
 }
 
 @end
@@ -293,11 +305,14 @@ int cfreerdp_fliptest(void) {
                 else            { p[0] = 255; p[1] = 0; p[2] = 0;   p[3] = 255; } // bottom = BLUE
             }
         }
-        // 실제 윈도우 백킹에 올려야 cacheDisplayInRect가 drawRect를 정확히 렌더.
+        // 실제 윈도우 백킹에 올려야 cacheDisplayInRect가 layer.contents를 정확히 렌더.
         NSWindow *win = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, w, h)
                          styleMask:NSWindowStyleMaskBorderless backing:NSBackingStoreBuffered defer:NO];
         win.contentView = v;
-        [v ingestFrame:buf width:w height:h stride:stride];
+        CGImageRef img = rv_make_image(buf, w, h, stride);
+        [v ingestImage:img width:w height:h frameMs:0]; // 소유권 이전
+        // consumePending(비동기)가 layer.contents를 설정하도록 런루프를 잠깐 돌림
+        [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.3]];
         [v displayIfNeeded];
         NSBitmapImageRep *rep = [v bitmapImageRepForCachingDisplayInRect:v.bounds];
         [v cacheDisplayInRect:v.bounds toBitmapImageRep:rep];
