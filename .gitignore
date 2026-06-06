@@ -9,3 +9,9 @@ DerivedData/
 vendor/qemu/
 .bottle-cache/
 __pycache__/
+
+# GPL/LGPL 소스 동봉(배포 시 scripts/fetch_gpl_sources.py로 생성)
+gpl-sources/
+
+# 패키징 산출물(.app/.dmg) — scripts/package_app.sh로 생성
+dist/
