@@ -53,8 +53,9 @@ struct SandboxConfig: Codable, Equatable {
     /// 프린터 리다이렉트 (WS 기본 off). FreeRDP `/printer`.
     var printerEnabled: Bool = false
 
-    /// 메모리 크기 (MB). WS 표준 ~4GB.
-    var memoryMB: Int = 4096
+    /// 메모리 크기 (MB). 호스트 RAM에 비례하되 **최소 4GB**(Windows 11 ARM 최소).
+    /// 런타임에서 [4GB, 호스트-4GB]로 클램프된다([QEMURuntime]).
+    var memoryMB: Int = SandboxConfig.defaultMemoryMB
 
     /// CPU 코어 수 (`.wsb`엔 없는 항목). 호스트 코어에 비례하되 **최소 2**(MacBook Air 기준).
     /// 런타임에서 [2, 호스트-2]로 클램프된다([QEMURuntime]). 사용자는 CLI `--cpus`로 조정.
@@ -67,6 +68,14 @@ struct SandboxConfig: Codable, Equatable {
     /// 일회용 샌드박스는 호스트 응답성을 우선해 보수적으로 잡고, 필요 시 사용자가 올린다.
     static var defaultCPUCores: Int {
         max(2, ProcessInfo.processInfo.activeProcessorCount / 4)
+    }
+
+    /// 호스트 RAM의 약 절반, [4GB, 호스트-4GB]. 8GB Mac → 4GB, 16GB → 8GB, 32GB → 16GB.
+    /// 항상 호스트에 최소 4GB를 남기고, Windows 11 ARM 최소 4GB를 보장한다.
+    static var defaultMemoryMB: Int {
+        let hostMB = Int(ProcessInfo.processInfo.physicalMemory / (1024 * 1024))
+        let cap = max(4096, hostMB - 4096)   // 호스트에 최소 4GB 남김
+        return min(max(4096, hostMB / 2), cap)
     }
 }
 

@@ -173,8 +173,10 @@ final class QEMURuntime {
         let hostCores = ProcessInfo.processInfo.activeProcessorCount
         let cores = max(2, min(config.cpuCores, max(2, hostCores - 2)))
         args += ["-smp", "\(cores)"]
-        // 메모리: Windows 11 ARM 최소 4GB 보장.
-        args += ["-m", "\(max(4096, config.memoryMB))"]
+        // 메모리: 최소 4GB(Win11 ARM 최소) 보장 + 호스트에 최소 4GB 남김(과할당 방지).
+        let hostMB = Int(ProcessInfo.processInfo.physicalMemory / (1024 * 1024))
+        let mem = min(max(4096, config.memoryMB), max(4096, hostMB - 4096))
+        args += ["-m", "\(mem)"]
 
         args += ["-drive", "if=pflash,format=raw,readonly=on,file=\(efiCodePath)"]
         args += ["-drive", "if=pflash,format=raw,file=\(efiVarsPath)"]
