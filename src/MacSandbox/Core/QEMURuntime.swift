@@ -169,8 +169,12 @@ final class QEMURuntime {
         args += ["-machine", "virt,highmem=on,gic-version=3"]
         args += ["-accel", "hvf"]
         args += ["-cpu", "host"]
-        args += ["-smp", "\(max(1, config.cpuCores))"]
-        args += ["-m", "\(max(1024, config.memoryMB))"]
+        // vCPU: 최소 2(Windows 11 ARM 최소 + 납득 가능한 성능), 호스트엔 최소 2코어를 남김.
+        let hostCores = ProcessInfo.processInfo.activeProcessorCount
+        let cores = max(2, min(config.cpuCores, max(2, hostCores - 2)))
+        args += ["-smp", "\(cores)"]
+        // 메모리: Windows 11 ARM 최소 4GB 보장.
+        args += ["-m", "\(max(4096, config.memoryMB))"]
 
         args += ["-drive", "if=pflash,format=raw,readonly=on,file=\(efiCodePath)"]
         args += ["-drive", "if=pflash,format=raw,file=\(efiVarsPath)"]

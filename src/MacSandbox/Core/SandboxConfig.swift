@@ -56,11 +56,18 @@ struct SandboxConfig: Codable, Equatable {
     /// 메모리 크기 (MB). WS 표준 ~4GB.
     var memoryMB: Int = 4096
 
-    /// CPU 코어 수 (`.wsb`엔 없는 항목 — 합리적 기본값).
-    var cpuCores: Int = 4
+    /// CPU 코어 수 (`.wsb`엔 없는 항목). 호스트 코어에 비례하되 **최소 2**(MacBook Air 기준).
+    /// 런타임에서 [2, 호스트-2]로 클램프된다([QEMURuntime]). 사용자는 CLI `--cpus`로 조정.
+    var cpuCores: Int = SandboxConfig.defaultCPUCores
 
     /// 종료 시 변경사항 폐기(일회용). Windows Sandbox와 동일하게 기본 true.
     var disposable: Bool = true
+
+    /// 호스트 코어의 약 1/4, 최소 2. MacBook Air(8코어) → 2, 상위 Mac은 비례 증가.
+    /// 일회용 샌드박스는 호스트 응답성을 우선해 보수적으로 잡고, 필요 시 사용자가 올린다.
+    static var defaultCPUCores: Int {
+        max(2, ProcessInfo.processInfo.activeProcessorCount / 4)
+    }
 }
 
 /// 호스트 ↔ 게스트 폴더 매핑 (`.wsb`의 MappedFolder)
