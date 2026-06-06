@@ -64,10 +64,11 @@ struct SandboxConfig: Codable, Equatable {
     /// 종료 시 변경사항 폐기(일회용). Windows Sandbox와 동일하게 기본 true.
     var disposable: Bool = true
 
-    /// 호스트 코어의 약 1/4, 최소 2. MacBook Air(8코어) → 2, 상위 Mac은 비례 증가.
-    /// 일회용 샌드박스는 호스트 응답성을 우선해 보수적으로 잡고, 필요 시 사용자가 올린다.
+    /// 호스트 코어의 약 절반, [2, 8]. MacBook Air(8코어) → 4, 16코어 → 8.
+    /// 소프트웨어 DWM 합성엔 코어가 필요해 절반을 할당하되(런타임에서 호스트-2로 클램프),
+    /// 일회용 샌드박스라 기본 상한은 8로 둔다(더 필요하면 사용자가 --cpus로 상향).
     static var defaultCPUCores: Int {
-        max(2, ProcessInfo.processInfo.activeProcessorCount / 4)
+        max(2, min(8, ProcessInfo.processInfo.activeProcessorCount / 2))
     }
 
     /// 호스트 RAM의 약 절반, [4GB, 호스트-4GB]. 8GB Mac → 4GB, 16GB → 8GB, 32GB → 16GB.
