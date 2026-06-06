@@ -23,6 +23,9 @@
 #include <freerdp/channels/cliprdr.h>
 #include <freerdp/client/disp.h>
 #include <freerdp/channels/disp.h>
+#include <freerdp/client/rdpgfx.h>
+#include <freerdp/channels/rdpgfx.h>
+#include <freerdp/gdi/gfx.h>
 #include <freerdp/client/channels.h>
 #include <freerdp/addin.h>
 #include <freerdp/input.h>
@@ -89,6 +92,7 @@ struct RDPEngine {
 
     DispClientContext *disp;     // Display Control 채널(동적 해상도). 연결 시 채워짐
     int reqW, reqH, reqScale;    // 대기 중 요청 해상도/DPI배율(채널 연결 전 요청 시 보관)
+    RdpgfxClientContext *gfx;    // Graphics Pipeline(RDPGFX) 채널. 연결 시 gdi에 연결
 
     UINT32 fileFormatId;         // 서버가 알린 "FileGroupDescriptorW" 포맷 ID(0=없음)
     UINT32 pendingFormatId;      // 마지막 ClientFormatDataRequest의 포맷(응답 구분용)
@@ -514,6 +518,12 @@ static void eng_channel_connected(void *context, const ChannelConnectedEventArgs
         eng->disp = (DispClientContext *)e->pInterface;
         if (eng->reqW > 0 && eng->reqH > 0) eng_send_resize(eng);
         fprintf(stderr, "[disp] 채널 연결됨\n");
+    } else if (strcmp(e->name, RDPGFX_DVC_CHANNEL_NAME) == 0) {
+        // Graphics Pipeline → gdi에 연결(서버 H.264/AVC444/progressive 인코딩 + 영역 갱신).
+        eng->gfx = (RdpgfxClientContext *)e->pInterface;
+        rdpGdi *gdi = ((rdpContext *)context)->gdi;
+        if (gdi) gdi_graphics_pipeline_init(gdi, eng->gfx);
+        fprintf(stderr, "[rdpgfx] 채널 연결됨\n");
     }
 }
 
@@ -573,7 +583,12 @@ static freerdp *eng_new_instance(RDPEngine *e) {
     freerdp_settings_set_uint32(s, FreeRDP_DesktopWidth, 1440);
     freerdp_settings_set_uint32(s, FreeRDP_DesktopHeight, 900);
     freerdp_settings_set_uint32(s, FreeRDP_ColorDepth, 32);
-    freerdp_settings_set_bool(s, FreeRDP_SupportGraphicsPipeline, FALSE);
+    // Graphics Pipeline(RDPGFX) — 서버가 H.264/AVC444/RemoteFX progressive로 인코딩 +
+    // 변경 영역만 갱신 → 레거시 GDI보다 매끄럽다. gdi gfx 파이프라인은 채널 연결 시 연결.
+    freerdp_settings_set_bool(s, FreeRDP_SupportGraphicsPipeline, TRUE);
+    freerdp_settings_set_bool(s, FreeRDP_GfxProgressive, TRUE);
+    freerdp_settings_set_bool(s, FreeRDP_GfxH264, TRUE);
+    freerdp_settings_set_bool(s, FreeRDP_GfxAVC444v2, TRUE);
     freerdp_settings_set_bool(s, FreeRDP_RedirectClipboard, TRUE);
     freerdp_settings_set_bool(s, FreeRDP_SupportDisplayControl, TRUE); // 동적 해상도
     if (e->reqW > 0 && e->reqH > 0) { // 초기 해상도(창 크기)가 정해져 있으면 그걸로 연결
@@ -625,6 +640,10 @@ static void eng_run(RDPEngine *e) {
     }
 
     eng_status(e, "연결 종료");
+    if (e->gfx && instance->context->gdi) {
+        gdi_graphics_pipeline_uninit(instance->context->gdi, e->gfx);
+        e->gfx = NULL;
+    }
     freerdp_disconnect(instance);
     freerdp_context_free(instance);
     freerdp_free(instance);
