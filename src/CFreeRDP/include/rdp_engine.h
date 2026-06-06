@@ -42,6 +42,10 @@ RDPEngine *rdp_engine_create(const char *host, int port,
                              RDPClipboardTextCallback onRemoteText,
                              void *userdata);
 
+// 리다이렉션 기능 게이팅(.wsb 반영). rdp_engine_start 전에 호출. 미호출 시 기본값
+// (클립보드 on, 마이크 on, 프린터 off). 스피커 재생은 항상 켜짐(.wsb 토글 없음).
+void rdp_engine_set_features(RDPEngine *engine, int clipboard, int mic, int printer);
+
 void rdp_engine_start(RDPEngine *engine); // 백그라운드 스레드에서 연결+이벤트 루프
 void rdp_engine_stop(RDPEngine *engine);  // 중단 요청
 void rdp_engine_free(RDPEngine *engine);  // 정리(중단 후 스레드 조인)

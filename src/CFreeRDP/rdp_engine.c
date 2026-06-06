@@ -93,6 +93,9 @@ struct RDPEngine {
     DispClientContext *disp;     // Display Control 채널(동적 해상도). 연결 시 채워짐
     int reqW, reqH, reqScale;    // 대기 중 요청 해상도/DPI배율(채널 연결 전 요청 시 보관)
     RdpgfxClientContext *gfx;    // Graphics Pipeline(RDPGFX) 채널. 연결 시 gdi에 연결
+    int featClipboard;           // 클립보드 리다이렉션 on/off(.wsb ClipboardRedirection)
+    int featMic;                 // 마이크 캡처 on/off(.wsb AudioInput). 스피커 재생은 상시.
+    int featPrinter;             // 프린터 리다이렉션 on/off(.wsb PrinterRedirection)
 
     UINT32 fileFormatId;         // 서버가 알린 "FileGroupDescriptorW" 포맷 ID(0=없음)
     UINT32 pendingFormatId;      // 마지막 ClientFormatDataRequest의 포맷(응답 구분용)
@@ -151,8 +154,11 @@ static BOOL eng_post_connect(freerdp *instance) {
 // FreeRDP 3.x 채널 로드 훅. 코어가 적절한 시점에 호출하고, 이후 채널을 연결한다.
 static BOOL eng_load_channels(freerdp *instance) {
     rdpSettings *s = instance->context->settings;
-    const char *clipArgs[] = { "cliprdr" };
-    freerdp_client_add_static_channel(s, 1, clipArgs);
+    // 클립보드 채널은 RedirectClipboard(=featClipboard, eng_new_instance에서 설정)일 때만 추가.
+    if (freerdp_settings_get_bool(s, FreeRDP_RedirectClipboard)) {
+        const char *clipArgs[] = { "cliprdr" };
+        freerdp_client_add_static_channel(s, 1, clipArgs);
+    }
     BOOL ok = freerdp_client_load_addins(instance->context->channels, s);
     return ok;
 }
@@ -589,14 +595,16 @@ static freerdp *eng_new_instance(RDPEngine *e) {
     freerdp_settings_set_bool(s, FreeRDP_GfxProgressive, TRUE);
     freerdp_settings_set_bool(s, FreeRDP_GfxH264, TRUE);
     freerdp_settings_set_bool(s, FreeRDP_GfxAVC444v2, TRUE);
-    freerdp_settings_set_bool(s, FreeRDP_RedirectClipboard, TRUE);
+    freerdp_settings_set_bool(s, FreeRDP_RedirectClipboard, e->featClipboard ? TRUE : FALSE);
     freerdp_settings_set_bool(s, FreeRDP_SupportDisplayControl, TRUE); // 동적 해상도
-    // 오디오 재생(게스트→호스트): RDP 오디오 리다이렉션(rdpsnd). Windows가 게스트 드라이버 없이
-    // 기본 제공하고, libfreerdp가 macOS CoreAudio(AudioToolbox) 백엔드로 재생.
+    // 프린터 리다이렉션(.wsb PrinterRedirection): rdpdr + CUPS 백엔드(호스트 프린터→게스트).
+    freerdp_settings_set_bool(s, FreeRDP_RedirectPrinters, e->featPrinter ? TRUE : FALSE);
+    // 오디오 재생(게스트→호스트, 스피커): rdpsnd + macOS CoreAudio. .wsb엔 토글이 없어 상시 켬
+    // (Windows Sandbox도 게스트 오디오를 항상 호스트로 재생).
     freerdp_settings_set_bool(s, FreeRDP_AudioPlayback, TRUE);
-    // 마이크(호스트→게스트): 오디오 입력 리다이렉션(audin). macOS AVFAudio 캡처 백엔드 사용.
+    // 마이크(호스트→게스트): audin + macOS AVFAudio. .wsb AudioInput으로 게이팅.
     // 최초 사용 시 macOS 마이크 권한 프롬프트(Info.plist NSMicrophoneUsageDescription).
-    freerdp_settings_set_bool(s, FreeRDP_AudioCapture, TRUE);
+    freerdp_settings_set_bool(s, FreeRDP_AudioCapture, e->featMic ? TRUE : FALSE);
     if (e->reqW > 0 && e->reqH > 0) { // 초기 해상도(창 크기)가 정해져 있으면 그걸로 연결
         freerdp_settings_set_uint32(s, FreeRDP_DesktopWidth, (UINT32)(e->reqW & ~1));
         freerdp_settings_set_uint32(s, FreeRDP_DesktopHeight, (UINT32)(e->reqH & ~1));
@@ -676,8 +684,20 @@ RDPEngine *rdp_engine_create(const char *host, int port,
     e->onStatus = onStatus;
     e->onRemoteText = onRemoteText;
     e->userdata = userdata;
+    // 기본값: Windows Sandbox 표준(클립보드·마이크 on, 프린터 off). set_features로 덮어쓴다.
+    e->featClipboard = 1;
+    e->featMic = 1;
+    e->featPrinter = 0;
     pthread_mutex_init(&e->clipLock, NULL);
     return e;
+}
+
+// 리다이렉션 기능 게이팅(.wsb 반영). rdp_engine_start 전에 호출해야 한다.
+void rdp_engine_set_features(RDPEngine *e, int clipboard, int mic, int printer) {
+    if (!e) return;
+    e->featClipboard = clipboard ? 1 : 0;
+    e->featMic = mic ? 1 : 0;
+    e->featPrinter = printer ? 1 : 0;
 }
 
 void rdp_engine_set_files_callback(RDPEngine *e, RDPClipboardFilesCallback cb) {

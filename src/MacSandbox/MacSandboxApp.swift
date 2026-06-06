@@ -41,6 +41,11 @@ enum AppEntry {
             let parts = args[idx + 1].split(separator: ":")
             RDPViewTest.host = String(parts[0])
             RDPViewTest.port = parts.count > 1 ? Int(parts[1]) ?? 3389 : 3389
+            // 기능 게이팅 검증용 env(미지정 시 기본값): MSBX_CLIPBOARD/MSBX_MIC/MSBX_PRINTER = 0|1
+            let env = ProcessInfo.processInfo.environment
+            if let v = env["MSBX_CLIPBOARD"] { RDPViewTest.clipboard = (v != "0") }
+            if let v = env["MSBX_MIC"] { RDPViewTest.mic = (v != "0") }
+            if let v = env["MSBX_PRINTER"] { RDPViewTest.printer = (v != "0") }
             RDPViewTestApp.main()
             return
         }

@@ -27,6 +27,8 @@ final class SandboxRunner: ObservableObject {
     /// 현재 RDP 포워딩 포트(127.0.0.1:rdpPort → 게스트 3389). 0이면 미설정.
     /// 인앱 임베드 RDP 뷰(RDPHostView)가 이 포트로 연결한다.
     @Published private(set) var rdpPort: Int = 0
+    /// 현재 실행 중 구성(.wsb 반영). RDP 뷰가 리다이렉션 기능 게이팅에 사용.
+    @Published private(set) var activeConfig = SandboxConfig()
 
     private let disk = DiskService()
     private let runtime = QEMURuntime()
@@ -48,6 +50,7 @@ final class SandboxRunner: ObservableObject {
             status = "사용 가능한 베이스라인이 없습니다."
             return
         }
+        activeConfig = config
         isRunning = true
         log = ""
         defer { isRunning = false }

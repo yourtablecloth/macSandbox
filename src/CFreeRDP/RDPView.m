@@ -49,6 +49,9 @@
         // RDP 프레임을 layer.contents로 직접 올려 GPU가 합성·스케일(드로잉 CPU 스케일 제거).
         self.layer.contentsGravity = kCAGravityResize;
         self.layerContentsRedrawPolicy = NSViewLayerContentsRedrawNever;
+        _clipboardEnabled = YES;   // .wsb 기본(Windows Sandbox와 동일)
+        _micEnabled = YES;
+        _printerEnabled = NO;
     }
     return self;
 }
@@ -237,6 +240,7 @@ static void rv_on_remote_files(void *ud, const char *const *paths, int count) {
                                 username.UTF8String, password.UTF8String,
                                 rv_on_frame, rv_on_status, rv_on_remote_text,
                                 (__bridge void *)self);
+    rdp_engine_set_features(_engine, _clipboardEnabled, _micEnabled, _printerEnabled);
     rdp_engine_set_files_callback(_engine, rv_on_remote_files);
     rdp_engine_start(_engine);
     // 로컬 클립보드 변경 감시(local→remote)

@@ -32,4 +32,10 @@
 /// 첫 RDP 프레임이 렌더된 시점에 메인 스레드에서 1회 호출(부팅 오버레이 → RDP 화면 전환용).
 @property (nonatomic, copy) void (^onFirstFrame)(void);
 
+/// 리다이렉션 기능(.wsb 반영). connectToHost 전에 설정한다.
+/// 기본: 클립보드 on, 마이크 on, 프린터 off. 스피커 재생은 항상 켜짐.
+@property (nonatomic) BOOL clipboardEnabled;
+@property (nonatomic) BOOL micEnabled;
+@property (nonatomic) BOOL printerEnabled;
+
 @end

@@ -21,6 +21,10 @@ struct RDPHostView: NSViewRepresentable {
     let port: Int
     var username: String = SandboxCreds.username
     var password: String = SandboxCreds.password
+    /// 리다이렉션 기능(.wsb 반영). 스피커 재생은 항상 켜짐(.wsb 토글 없음).
+    var clipboardEnabled: Bool = true
+    var micEnabled: Bool = true
+    var printerEnabled: Bool = false
     /// 첫 RDP 프레임이 렌더되면 true (부팅 오버레이 → RDP 화면 전환용).
     @Binding var rendered: Bool
 
@@ -30,6 +34,9 @@ struct RDPHostView: NSViewRepresentable {
         let v = RDPView(frame: .zero)
         let coord = context.coordinator
         v.onFirstFrame = { coord.markRendered() }
+        v.clipboardEnabled = clipboardEnabled   // connect 전에 설정(엔진 생성 시 반영)
+        v.micEnabled = micEnabled
+        v.printerEnabled = printerEnabled
         v.connect(toHost: host, port: Int32(port), username: username, password: password)
         return v
     }
@@ -63,11 +70,18 @@ struct RDPViewTestApp: App {
 private struct RDPViewTestContainer: View {
     @State private var rendered = false
     var body: some View {
-        RDPHostView(host: RDPViewTest.host, port: RDPViewTest.port, rendered: $rendered)
+        RDPHostView(host: RDPViewTest.host, port: RDPViewTest.port,
+                    clipboardEnabled: RDPViewTest.clipboard,
+                    micEnabled: RDPViewTest.mic,
+                    printerEnabled: RDPViewTest.printer,
+                    rendered: $rendered)
     }
 }
 
 enum RDPViewTest {
     static var host = "127.0.0.1"
     static var port = 3389
+    static var clipboard = true
+    static var mic = true
+    static var printer = false
 }

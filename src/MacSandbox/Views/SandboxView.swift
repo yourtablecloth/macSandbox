@@ -53,7 +53,11 @@ struct SandboxView: View {
             // 타이틀바 아래 콘텐츠 영역을 채운다(ignoresSafeArea로 타이틀바까지 확장하면 상단이 가려짐).
             Color.black
             if runner.rdpPort > 0 {
-                RDPHostView(host: "127.0.0.1", port: runner.rdpPort, rendered: $rdpRendered)
+                RDPHostView(host: "127.0.0.1", port: runner.rdpPort,
+                            clipboardEnabled: runner.activeConfig.clipboardEnabled,
+                            micEnabled: runner.activeConfig.audioInputEnabled,
+                            printerEnabled: runner.activeConfig.printerEnabled,
+                            rendered: $rdpRendered)
             }
             if !rdpRendered { bootOverlay }
             // 종료는 메뉴(샌드박스 › 샌드박스 종료 ⌘.) · 창 닫기 · ⌘Q로 제어한다(플로팅 버튼 제거).
