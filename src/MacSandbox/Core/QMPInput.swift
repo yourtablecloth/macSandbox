@@ -1,3 +1,16 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+// Copyright (C) 2026 Nam Jung Hyun (rkttu) <rkttu.official@gmail.com>
+//
+// This file is part of MacSandbox, which is dual-licensed:
+//   (1) under the GNU General Public License v3.0 or later (see LICENSE), or
+//   (2) under a commercial license (see COMMERCIAL-LICENSE.md).
+// You may use this file under the terms of either license.
+//
+// MacSandbox is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+// FITNESS FOR A PARTICULAR PURPOSE.
+
 import Foundation
 import Darwin
 
