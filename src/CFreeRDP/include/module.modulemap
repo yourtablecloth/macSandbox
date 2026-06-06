@@ -1,0 +1,6 @@
+module CFreeRDP {
+    header "CFreeRDP.h"
+    header "rdp_engine.h"
+    header "RDPView.h"
+    export *
+}

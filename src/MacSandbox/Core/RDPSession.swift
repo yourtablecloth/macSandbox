@@ -1,3 +1,16 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+// Copyright (C) 2026 Nam Jung Hyun (rkttu) <rkttu.official@gmail.com>
+//
+// This file is part of MacSandbox, which is dual-licensed:
+//   (1) under the GNU General Public License v3.0 or later (see LICENSE), or
+//   (2) under a commercial license (see COMMERCIAL-LICENSE.md).
+// You may use this file under the terms of either license.
+//
+// MacSandbox is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+// FITNESS FOR A PARTICULAR PURPOSE.
+
 import Foundation
 import Darwin
 
@@ -50,11 +63,15 @@ final class RDPSession {
     static func buildArgs(config: SandboxConfig, port: Int) -> [String] {
         var args: [String] = []
         args.append("/v:127.0.0.1:\(port)")
-        args.append("/u:\(user)")
-        args.append("/p:")                  // 빈 암호 (게스트 LimitBlankPasswordUse=0 + NLA off)
+        args.append("/u:\(SandboxCreds.username)")
+        args.append("/p:\(SandboxCreds.password)")  // 고정 내부 암호 — 신뢰성 있는 credential auto-logon
         args.append("/sec:tls")             // TLS 보안 — 서버가 RDP-only는 SSL_REQUIRED로 거부, NLA는 우회
         args.append("/cert:ignore")
-        args.append("/dynamic-resolution")  // 창 크기에 맞춰 해상도 조정
+        // 고정 크기 창으로 띄운다. /dynamic-resolution은 SDL 클라이언트에서 디스플레이 전체 크기로
+        // 열렸다가 축소되는 전체화면 전환을 유발하므로 쓰지 않는다. +smart-sizing으로 창 리사이즈 시 스케일.
+        args.append("/w:1440")
+        args.append("/h:900")
+        args.append("+smart-sizing")
         args.append("/title:MacSandbox")
 
         // 클립보드
@@ -90,8 +107,10 @@ final class RDPSession {
     private var stopped = false
 
     /// FreeRDP를 한 번 실행하고 종료 코드를 반환한다(프로세스 종료까지 await).
+    /// - onConnected: 실제 RDP 세션이 확립된 시점(동적 채널 로드)에 1회 호출. 부팅 화면→RDP 전환 신호.
     func run(config: SandboxConfig, port: Int,
-             onLog: @escaping (String) -> Void) async throws -> Int32 {
+             onLog: @escaping (String) -> Void,
+             onConnected: (() -> Void)? = nil) async throws -> Int32 {
         guard let bin = SandboxPaths.freerdpBinary() else {
             throw BuildError.installFailed("FreeRDP(sdl-freerdp)를 찾을 수 없습니다. `brew install freerdp` 후 다시 시도하세요.")
         }
@@ -105,18 +124,27 @@ final class RDPSession {
         let out = Pipe(); let err = Pipe()
         proc.standardOutput = out
         proc.standardError = err
+        // 세션 확립 감지: 동적 가상 채널 로드(rdpgfx 등) 라인이 보이면 연결된 것으로 간주.
+        let connected = OneShotFlag()
+        let sink: (String) -> Void = { t in
+            onLog("[rdp] \(t)")
+            if let onConnected,
+               t.contains("Loading Dynamic Virtual Channel") || t.contains("rdpgfx") {
+                if connected.set() { onConnected() }
+            }
+        }
         out.fileHandleForReading.readabilityHandler = { h in
             let d = h.availableData
             if !d.isEmpty, let s = String(data: d, encoding: .utf8) {
                 let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !t.isEmpty { onLog("[rdp] \(t)") }
+                if !t.isEmpty { sink(t) }
             }
         }
         err.fileHandleForReading.readabilityHandler = { h in
             let d = h.availableData
             if !d.isEmpty, let s = String(data: d, encoding: .utf8) {
                 let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !t.isEmpty { onLog("[rdp] \(t)") }
+                if !t.isEmpty { sink(t) }
             }
         }
 
