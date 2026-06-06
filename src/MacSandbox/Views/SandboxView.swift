@@ -50,10 +50,10 @@ struct SandboxView: View {
 
     private var runningView: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            // 타이틀바 아래 콘텐츠 영역을 채운다(ignoresSafeArea로 타이틀바까지 확장하면 상단이 가려짐).
+            Color.black
             if runner.rdpPort > 0 {
                 RDPHostView(host: "127.0.0.1", port: runner.rdpPort, rendered: $rdpRendered)
-                    .ignoresSafeArea()
             }
             if !rdpRendered { bootOverlay }
 
