@@ -1,3 +1,16 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+// Copyright (C) 2026 Nam Jung Hyun (rkttu) <rkttu.official@gmail.com>
+//
+// This file is part of MacSandbox, which is dual-licensed:
+//   (1) under the GNU General Public License v3.0 or later (see LICENSE), or
+//   (2) under a commercial license (see COMMERCIAL-LICENSE.md).
+// You may use this file under the terms of either license.
+//
+// MacSandbox is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+// FITNESS FOR A PARTICULAR PURPOSE.
+
 import Foundation
 
 /// 일회용 샌드박스 실행 오케스트레이터.
@@ -12,12 +25,12 @@ final class SandboxRunner: ObservableObject {
     @Published private(set) var log: String = ""
     @Published var console: VMConsole?
     /// 현재 RDP 포워딩 포트(127.0.0.1:rdpPort → 게스트 3389). 0이면 미설정.
+    /// 인앱 임베드 RDP 뷰(RDPHostView)가 이 포트로 연결한다.
     @Published private(set) var rdpPort: Int = 0
 
     private let disk = DiskService()
     private let runtime = QEMURuntime()
     private let fm = FileManager.default
-    private var rdp: RDPSession?
 
     func hasBaseline() -> Bool {
         guard let data = try? Data(contentsOf: SandboxPaths.baselineMetadataPath),
@@ -46,6 +59,7 @@ final class SandboxRunner: ObservableObject {
 
         do {
             try SandboxPaths.ensureBaseDirectories()
+            cleanStaleOverlays()   // 이전 강제종료로 남은 일회용 오버레이 정리(단일 인스턴스 전제)
 
             // 1. COW 오버레이 + 신선한 UEFI 변수
             status = "샌드박스 디스크 준비..."
@@ -79,7 +93,10 @@ final class SandboxRunner: ObservableObject {
             self.console = console
             console.start()
 
-            // QEMU를 백그라운드로 실행하고, 동시에 게스트 RDP가 뜨면 FreeRDP 창을 띄운다.
+            // QEMU를 백그라운드로 실행한다. 게스트 RDP는 인앱 임베드 뷰(RDPHostView)가
+            // rdpPort로 연결해 렌더한다(외부 FreeRDP 창 없음). 임베드 엔진이 게스트 부팅을
+            // 기다리며 연결을 재시도하므로 별도의 RDP 런처는 필요 없다.
+            status = "샌드박스 부팅 중 (인앱 RDP 연결 대기)"
             let qemuTask = Task { () -> Int32 in
                 try await self.runtime.runUntilExit(
                     arguments: args, qmpSocketPath: qmpSocket, timeoutSeconds: 24 * 60 * 60
@@ -87,14 +104,11 @@ final class SandboxRunner: ObservableObject {
                     Task { @MainActor in self?.appendLog(out) }
                 }
             }
-            launchRDPWhenReady(config: config, port: port)
 
-            // 샌드박스는 사용자가 FreeRDP 창을 닫거나 게스트가 종료될 때까지 실행
+            // 샌드박스는 사용자가 종료하거나 게스트가 종료될 때까지 실행
             let exit = (try? await qemuTask.value) ?? -1
             console.stop()
             self.console = nil
-            rdp?.stop()
-            rdp = nil
             self.rdpPort = 0
             appendLog("QEMU 종료 (exit=\(exit))")
             status = "종료됨"
@@ -116,60 +130,19 @@ final class SandboxRunner: ObservableObject {
 
     /// 샌드박스 종료 (disposable이므로 강제 종료해도 무방)
     func stop() {
-        rdp?.stop()
         runtime.forceStop()
         appendLog("종료 요청")
     }
 
     // MARK: - Private
 
-    /// 게스트 RDP 서버가 뜰 때까지 FreeRDP를 재시도하며 띄운다.
-    ///
-    /// QEMU user-mode hostfwd는 게스트 RDP 준비 전에도 호스트측 connect를 즉시 수락하므로
-    /// 포트 폴링으로는 준비를 판정할 수 없다. 대신 FreeRDP를 실제로 실행해 보고,
-    /// 짧게 실패하면(=게스트 RDP 미준비) 잠시 후 재시도한다. 오래 살아있다 종료되면
-    /// 사용자가 창을 닫은 것으로 보고 QEMU를 종료한다.
-    private func launchRDPWhenReady(config: SandboxConfig, port: Int) {
-        Task { @MainActor in
-            // 부팅 그레이스 — 첫 시도 전 잠깐 대기
-            try? await Task.sleep(nanoseconds: 15_000_000_000)
-            self.status = "게스트 RDP 연결 대기..."
-
-            let session = RDPSession()
-            self.rdp = session
-            let maxAttempts = 40            // 약 5분 범위
-            for attempt in 1...maxAttempts {
-                guard self.isRunning, !session.isStopped else { return }
-                let start = Date()
-                let code: Int32
-                do {
-                    code = try await session.run(config: config, port: port) { [weak self] m in
-                        Task { @MainActor in self?.appendLog(m) }
-                    }
-                } catch {
-                    self.appendLog("⚠️ FreeRDP 실행 실패: \(error.localizedDescription)")
-                    return
-                }
-                if session.isStopped { return }
-                let lived = Date().timeIntervalSince(start)
-                if code == 0 {
-                    // 정상 종료 = 사용자가 RDP 창을 닫음 → 샌드박스 종료
-                    self.appendLog("FreeRDP 세션 종료 — 샌드박스를 종료합니다")
-                    self.runtime.forceStop()
-                    return
-                }
-                if lived > 20 {
-                    // 한참 살아있다가 끊김 → 세션 종료로 간주
-                    self.appendLog("FreeRDP 연결 종료(코드 \(code)) — 샌드박스를 종료합니다")
-                    self.runtime.forceStop()
-                    return
-                }
-                // 짧게 실패 = 게스트 RDP 아직 미준비 → 재시도
-                if attempt == 1 { self.status = "게스트 부팅 중 (RDP 준비 대기)..." }
-                self.appendLog("RDP 연결 시도 \(attempt)/\(maxAttempts) 실패 — 게스트 준비 대기")
-                try? await Task.sleep(nanoseconds: 5_000_000_000)
-            }
-            self.appendLog("⚠️ RDP 연결을 확립하지 못했습니다 — VNC 콘솔로 진행하세요")
+    /// 일회용 오버레이 디렉토리의 잔류 파일 정리. 앱이 강제종료/크래시되면 정상 정리 코드가
+    /// 못 돌아 오버레이가 남으므로(워치독은 QEMU만 죽임), 다음 시작 때 비운다(단일 인스턴스 전제).
+    private func cleanStaleOverlays() {
+        let dir = SandboxPaths.overlaysDir
+        guard let items = try? fm.contentsOfDirectory(atPath: dir.path) else { return }
+        for item in items {
+            try? fm.removeItem(atPath: dir.appendingPathComponent(item).path)
         }
     }
 

@@ -1,176 +1,189 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+// Copyright (C) 2026 Nam Jung Hyun (rkttu) <rkttu.official@gmail.com>
+//
+// This file is part of MacSandbox, which is dual-licensed:
+//   (1) under the GNU General Public License v3.0 or later (see LICENSE), or
+//   (2) under a commercial license (see COMMERCIAL-LICENSE.md).
+// You may use this file under the terms of either license.
+//
+// MacSandbox is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+// FITNESS FOR A PARTICULAR PURPOSE.
+
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
-/// 일회용 샌드박스 실행 화면 (.wsb 대응 설정 + 실행 + 콘솔)
+/// 샌드박스 실행 화면. 베이스라인이 준비되면 라우터가 곧바로 시작한다.
+///
+/// - 실행 중: **인앱 임베드 RDP 뷰**가 창을 채운다(외부 FreeRDP 창 없음). 첫 프레임 전엔
+///   부팅 오버레이(상태/콘솔/로그)를 보여주고, RDP 화면이 그려지면 오버레이를 내린다.
+/// - 종료 후: 다시 시작 / `.wsb` 불러오기.
 struct SandboxView: View {
-    @StateObject private var runner = SandboxRunner()
-    @State private var config = SandboxConfig()
-    @State private var hasBaseline = false
+    @ObservedObject var runner: SandboxRunner
+    @Binding var config: SandboxConfig
+    @State private var showDetails = false
+    @State private var rdpRendered = false
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                header
-                if hasBaseline {
-                    configSection
-                    actionSection
-                    if let console = runner.console { consoleSection(console) }
-                    logSection
-                } else {
-                    noBaselineNotice
-                }
-            }
-            .padding(22)
-        }
-        .frame(minWidth: 640, minHeight: 560)
-        .onAppear { hasBaseline = runner.hasBaseline() }
-        .onChange(of: runner.isRunning) { _, _ in hasBaseline = runner.hasBaseline() }
-    }
-
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("샌드박스 실행")
-                .font(.title2).fontWeight(.semibold)
-            Text("베이스라인 위에 일회용 COW 환경을 띄웁니다. 종료 시 변경사항은 폐기됩니다.")
-                .font(.callout).foregroundStyle(.secondary)
-        }
-    }
-
-    private var noBaselineNotice: some View {
-        GroupBox {
-            HStack(spacing: 10) {
-                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                Text("준비된 베이스라인이 없습니다. ‘설치’ 탭에서 먼저 베이스라인을 구축하세요.")
-                Spacer()
-            }
-            .padding(6)
-        }
-    }
-
-    private var configSection: some View {
-        GroupBox("샌드박스 설정 (.wsb)") {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Text("메모리"); Spacer()
-                    Picker("", selection: $config.memoryMB) {
-                        ForEach([2048, 4096, 8192, 16384], id: \.self) { Text("\($0) MB").tag($0) }
-                    }.pickerStyle(.segmented).frame(maxWidth: 280).labelsHidden()
-                }
-                HStack {
-                    Text("CPU 코어"); Spacer()
-                    Picker("", selection: $config.cpuCores) {
-                        ForEach([2, 4, 6, 8], id: \.self) { Text("\($0)").tag($0) }
-                    }.pickerStyle(.segmented).frame(maxWidth: 220).labelsHidden()
-                }
-                Toggle("네트워킹 (NAT)", isOn: $config.networkingEnabled)
-                Toggle("vGPU (virtio-gpu 2D)", isOn: $config.vGpuEnabled)
-                HStack {
-                    Text("로그온 명령"); Spacer()
-                    TextField("logon 시 실행할 명령", text: $config.logonCommand)
-                        .frame(maxWidth: 320).textFieldStyle(.roundedBorder)
-                }
-                Divider()
-                Text("RDP 리다이렉션 (FreeRDP 창으로 상호작용)")
-                    .font(.caption).foregroundStyle(.secondary)
-                Toggle("클립보드 공유", isOn: $config.clipboardEnabled)
-                Toggle("마이크/오디오 공유", isOn: $config.audioInputEnabled)
-                Toggle("프린터 리다이렉트", isOn: $config.printerEnabled)
-                Toggle("웹캠 입력 공유", isOn: $config.videoInputEnabled)
-                    .disabled(true)
-                Text("웹캠은 현재 FreeRDP 빌드에서 미지원(RDPECAM 채널 없음)입니다.")
-                    .font(.caption2).foregroundStyle(.secondary)
-                Divider()
-                mappedFoldersSection
-            }
-            .disabled(runner.isRunning)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(6)
-        }
-    }
-
-    private var mappedFoldersSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text("공유 폴더 (RDP drive)").font(.caption).foregroundStyle(.secondary)
-                Spacer()
-                Button { addMappedFolder() } label: { Label("추가", systemImage: "plus") }
-                    .controlSize(.small)
-            }
-            if config.mappedFolders.isEmpty {
-                Text("공유 폴더 없음 — 게스트에서 \\\\tsclient\\<이름> 으로 접근")
-                    .font(.caption2).foregroundStyle(.secondary)
-            } else {
-                ForEach(config.mappedFolders) { folder in
-                    HStack(spacing: 8) {
-                        Image(systemName: "folder")
-                        Text((folder.hostPath as NSString).lastPathComponent)
-                            .font(.caption).lineLimit(1).truncationMode(.middle)
-                        Text(folder.hostPath)
-                            .font(.caption2).foregroundStyle(.secondary)
-                            .lineLimit(1).truncationMode(.middle)
-                        Spacer()
-                        Button { removeMappedFolder(folder) } label: {
-                            Image(systemName: "minus.circle")
-                        }.buttonStyle(.borderless).controlSize(.small)
-                    }
-                }
-            }
-        }
-    }
-
-    private func addMappedFolder() {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.prompt = "공유"
-        if panel.runModal() == .OK, let url = panel.url {
-            config.mappedFolders.append(MappedFolder(hostPath: url.path))
-        }
-    }
-
-    private func removeMappedFolder(_ folder: MappedFolder) {
-        config.mappedFolders.removeAll { $0.id == folder.id }
-    }
-
-    private var actionSection: some View {
-        HStack {
-            Button {
-                Task { await runner.start(config: config) }
-            } label: {
-                Label(runner.isRunning ? "실행 중..." : "샌드박스 시작", systemImage: "play.fill")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent).controlSize(.large)
-            .disabled(runner.isRunning)
-
+        Group {
             if runner.isRunning {
-                Button(role: .destructive) { runner.stop() } label: {
-                    Label("종료", systemImage: "stop.fill").frame(maxWidth: 120)
+                runningView
+            } else if isEnded {
+                endedView.padding(28)
+            } else {
+                startingView.padding(28)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onChange(of: runner.isRunning) { _, running in
+            if !running { rdpRendered = false; showDetails = false }
+        }
+    }
+
+    private var isEnded: Bool {
+        runner.status == "종료됨" || runner.status.hasPrefix("실패")
+    }
+
+    // MARK: - 실행 중 (임베드 RDP 뷰)
+
+    private var runningView: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            if runner.rdpPort > 0 {
+                RDPHostView(host: "127.0.0.1", port: runner.rdpPort, rendered: $rdpRendered)
+                    .ignoresSafeArea()
+            }
+            if !rdpRendered { bootOverlay }
+
+            // 종료 버튼 (항상 우상단 오버레이)
+            VStack {
+                HStack {
+                    Spacer()
+                    Button(role: .destructive) { runner.stop() } label: {
+                        Label("종료", systemImage: "stop.fill")
+                    }
+                    .controlSize(.large)
+                    .padding(12)
+                    .help("샌드박스를 종료합니다(일회용 — 변경사항 폐기)")
+                }
+                Spacer()
+            }
+        }
+    }
+
+    /// 부팅 오버레이 — 첫 RDP 프레임이 그려질 때까지 표시.
+    private var bootOverlay: some View {
+        ZStack {
+            Rectangle().fill(.ultraThinMaterial).ignoresSafeArea()
+            VStack(spacing: 16) {
+                Spacer()
+                ProgressView().controlSize(.large)
+                Text("샌드박스 부팅 중").font(.title2).fontWeight(.semibold)
+                Text(runner.status).font(.callout).foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                Text("Windows 부팅 후 인앱 화면에 RDP가 연결됩니다.")
+                    .font(.caption).foregroundStyle(.secondary)
+
+                DisclosureGroup(isExpanded: $showDetails) {
+                    detailPane.padding(.top, 8)
+                } label: {
+                    Text("더 보기 (부팅 모니터·로그)").font(.callout)
+                }
+                .frame(maxWidth: 640)
+                Spacer()
+            }
+            .padding(28)
+        }
+    }
+
+    /// 콘솔(부팅 모니터) + 로그
+    private var detailPane: some View {
+        VStack(spacing: 10) {
+            if let console = runner.console {
+                GroupBox("VM 콘솔 (부팅 모니터)") {
+                    VMConsoleView(console: console).padding(6)
+                }
+            }
+            logView
+        }
+    }
+
+    // MARK: - 시작 직전
+
+    private var startingView: some View {
+        VStack(spacing: 14) {
+            Spacer()
+            ProgressView().controlSize(.large)
+            Text("샌드박스를 시작합니다...").font(.title3).foregroundStyle(.secondary)
+            Spacer()
+        }
+    }
+
+    // MARK: - 종료 후
+
+    private var endedView: some View {
+        VStack(spacing: 16) {
+            Spacer()
+            Image(systemName: isFailure ? "exclamationmark.triangle" : "checkmark.circle")
+                .font(.system(size: 40))
+                .foregroundStyle(isFailure ? .orange : .secondary)
+            Text(isFailure ? runner.status : "샌드박스 종료됨").font(.title3).fontWeight(.medium)
+            Text("일회용 환경의 변경사항은 폐기되었습니다.").font(.caption).foregroundStyle(.secondary)
+
+            HStack(spacing: 10) {
+                Button { Task { await runner.start(config: config) } } label: {
+                    Label("새 샌드박스 시작", systemImage: "play.fill")
+                }
+                .buttonStyle(.borderedProminent).controlSize(.large)
+                Button { loadWSB() } label: {
+                    Label("구성(.wsb)...", systemImage: "doc.badge.gearshape")
                 }
                 .controlSize(.large)
             }
+
+            DisclosureGroup("로그") { logView.padding(.top, 6) }
+                .frame(maxWidth: 640)
             Spacer()
-            Text(runner.status).font(.caption).foregroundStyle(.secondary)
         }
     }
 
-    private func consoleSection(_ console: VMConsole) -> some View {
-        GroupBox("VM 콘솔") {
-            VMConsoleView(console: console).padding(6)
-        }
-    }
+    private var isFailure: Bool { runner.status.hasPrefix("실패") }
 
-    private var logSection: some View {
+    // MARK: - 공통
+
+    private var logView: some View {
         GroupBox("로그") {
-            ScrollView {
-                Text(runner.log.isEmpty ? "(출력 없음)" : runner.log)
-                    .font(.system(.caption, design: .monospaced))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    Text(runner.log.isEmpty ? "(출력 없음)" : runner.log)
+                        .font(.system(.caption, design: .monospaced))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .id("logbottom")
+                }
+                .frame(height: 160)
+                .onChange(of: runner.log) { _, _ in proxy.scrollTo("logbottom", anchor: .bottom) }
             }
-            .frame(height: 120)
             .padding(6)
+        }
+    }
+
+    // MARK: - .wsb 불러오기
+
+    private func loadWSB() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        if let wsbType = UTType(filenameExtension: "wsb") {
+            panel.allowedContentTypes = [wsbType, .xml]
+        }
+        panel.message = "샌드박스 구성(.wsb) 파일을 선택하세요"
+        if panel.runModal() == .OK, let url = panel.url,
+           let parsed = try? WSBConfig.load(path: url.path) {
+            config = parsed
         }
     }
 }

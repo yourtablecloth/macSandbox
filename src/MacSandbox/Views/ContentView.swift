@@ -1,10 +1,90 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+// Copyright (C) 2026 Nam Jung Hyun (rkttu) <rkttu.official@gmail.com>
+//
+// This file is part of MacSandbox, which is dual-licensed:
+//   (1) under the GNU General Public License v3.0 or later (see LICENSE), or
+//   (2) under a commercial license (see COMMERCIAL-LICENSE.md).
+// You may use this file under the terms of either license.
+//
+// MacSandbox is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+// FITNESS FOR A PARTICULAR PURPOSE.
+
 import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
 
-/// 미니멀 단일 창 — 1-round 베이스라인 자동 빌드
+/// 라우터 — 베이스라인이 없으면 빌드 화면, 있으면 곧바로 샌드박스를 시작한다.
+/// 실행 중에는 인앱 임베드 RDP 뷰가 창을 채운다(단일 창).
 struct ContentView: View {
+    @ObservedObject var runner: SandboxRunner   // 앱(App) 소유 — 메뉴 커맨드와 공유
     @StateObject private var builder = BaselineBuilder()
+    @State private var baselineReady = false
+    @State private var config: SandboxConfig = AppLaunch.shared.config
+    @State private var didAutoStart = false
+    @State private var closeGuard = CloseGuard()
+
+    var body: some View {
+        Group {
+            if baselineReady {
+                SandboxView(runner: runner, config: $config)
+            } else {
+                BuildView(builder: builder)
+            }
+        }
+        .frame(minWidth: 680, minHeight: 600)
+        .background(WindowAccessor { window in
+            // 창 닫기 시 확인 다이얼로그(VM과 함께 종료)
+            window?.delegate = closeGuard
+        })
+        .onAppear {
+            AppHooks.shared.runner = runner   // 앱/창 종료 훅이 참조
+            refresh()
+        }
+        .onChange(of: builder.phase) { _, p in if p == .completed { refresh() } }
+        .onChange(of: runner.isRunning) { _, running in
+            // 임베드 RDP 뷰는 앱 창 안에서 렌더하므로 창을 내리지 않는다. 종료 시에만 갱신.
+            if !running { refresh() }
+        }
+    }
+
+    /// 베이스라인이 준비돼 있으면 곧바로 샌드박스를 시작한다(최초 1회). 없으면 빌드 화면.
+    private func refresh() {
+        baselineReady = runner.hasBaseline()
+        if baselineReady, !didAutoStart, !runner.isRunning {
+            didAutoStart = true
+            Task { await runner.start(config: config) }
+        }
+    }
+}
+
+/// SwiftUI 뷰가 올라간 NSWindow 참조를 캡처한다(창을 화면에서 내리거나 다시 띄우기 위함).
+/// 코디네이터로 창이 실제로 바뀔 때만 콜백해 재렌더 루프를 막는다.
+struct WindowAccessor: NSViewRepresentable {
+    let onWindow: (NSWindow?) -> Void
+    func makeCoordinator() -> Coordinator { Coordinator() }
+    func makeNSView(context: Context) -> NSView {
+        let v = NSView()
+        DispatchQueue.main.async { context.coordinator.update(v.window, onWindow) }
+        return v
+    }
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async { context.coordinator.update(nsView.window, onWindow) }
+    }
+    final class Coordinator {
+        weak var last: NSWindow?
+        func update(_ w: NSWindow?, _ cb: (NSWindow?) -> Void) {
+            guard w !== last else { return }
+            last = w
+            cb(w)
+        }
+    }
+}
+
+/// 베이스라인 자동 빌드 화면 (베이스라인이 아직 없을 때만 표시)
+struct BuildView: View {
+    @ObservedObject var builder: BaselineBuilder
 
     @State private var isoPath: String = ""
     @State private var imageEdition: String = "Windows 11 Pro"
@@ -18,16 +98,6 @@ struct ContentView: View {
     }
 
     var body: some View {
-        TabView {
-            buildTab
-                .tabItem { Label("설치", systemImage: "square.and.arrow.down") }
-            SandboxView()
-                .tabItem { Label("샌드박스", systemImage: "play.rectangle") }
-        }
-        .frame(minWidth: 660, minHeight: 600)
-    }
-
-    private var buildTab: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 header
@@ -36,9 +106,7 @@ struct ContentView: View {
                 editionSection
                 actionSection
                 progressSection
-                if let console = builder.console {
-                    consoleSection(console)
-                }
+                if let console = builder.console { consoleSection(console) }
                 logSection
             }
             .padding(22)
@@ -62,7 +130,7 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 4) {
             Text("MacSandbox — 베이스라인 자동 구축")
                 .font(.title2).fontWeight(.semibold)
-            Text("준비한 Windows 11 ARM64 ISO로 무인 설치를 1-round 실행해 단일 베이스라인을 만듭니다. (QEMU + HVF)")
+            Text("샌드박스를 처음 쓰려면 베이스라인이 필요합니다. 준비한 Windows 11 ARM64 ISO로 무인 설치를 1-round 실행해 단일 베이스라인을 만듭니다. (QEMU + HVF) 완료되면 바로 샌드박스 시작 화면으로 전환됩니다.")
                 .font(.callout).foregroundStyle(.secondary)
         }
     }

@@ -1,3 +1,16 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+// Copyright (C) 2026 Nam Jung Hyun (rkttu) <rkttu.official@gmail.com>
+//
+// This file is part of MacSandbox, which is dual-licensed:
+//   (1) under the GNU General Public License v3.0 or later (see LICENSE), or
+//   (2) under a commercial license (see COMMERCIAL-LICENSE.md).
+// You may use this file under the terms of either license.
+//
+// MacSandbox is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+// FITNESS FOR A PARTICULAR PURPOSE.
+
 import Foundation
 
 /// QEMU(qemu-system-aarch64) 프로세스 생명주기 + 설치 모드 인자 빌드
@@ -25,6 +38,7 @@ final class QEMURuntime {
 
     private let lock = NSLock()
     private var process: Process?
+    private var watchdog: Process?
 
     private func storeProcess(_ p: Process?) {
         lock.lock(); process = p; lock.unlock()
@@ -33,6 +47,44 @@ final class QEMURuntime {
     private func currentProcess() -> Process? {
         lock.lock(); defer { lock.unlock() }
         return process
+    }
+
+    private func storeWatchdog(_ p: Process?) {
+        lock.lock(); watchdog = p; lock.unlock()
+    }
+
+    private func currentWatchdog() -> Process? {
+        lock.lock(); defer { lock.unlock() }
+        return watchdog
+    }
+
+    /// 부모-사망 워치독.
+    ///
+    /// macOS엔 `PR_SET_PDEATHSIG`가 없어 앱이 SIGKILL/크래시되면 자식 QEMU가 orphan으로 남는다.
+    /// 앱(부모) PID와 QEMU PID를 동시에 폴링하는 작은 감시 프로세스를 띄워, **앱이 사라지면**
+    /// QEMU를 TERM→KILL로 확실히 파괴한다(앱이 죽어도 이 감시 프로세스는 살아남아 정리 수행).
+    /// QEMU가 먼저 죽으면 루프가 끝나 스스로 종료한다.
+    private func spawnWatchdog(qemuPID: Int32) {
+        let appPID = ProcessInfo.processInfo.processIdentifier
+        let script = """
+        while /bin/kill -0 \(appPID) 2>/dev/null && /bin/kill -0 \(qemuPID) 2>/dev/null; do /bin/sleep 1; done
+        if /bin/kill -0 \(qemuPID) 2>/dev/null; then
+          /bin/kill -TERM \(qemuPID) 2>/dev/null
+          /bin/sleep 3
+          /bin/kill -KILL \(qemuPID) 2>/dev/null
+        fi
+        """
+        let wd = Process()
+        wd.executableURL = URL(fileURLWithPath: "/bin/sh")
+        wd.arguments = ["-c", script]
+        wd.standardOutput = FileHandle.nullDevice
+        wd.standardError = FileHandle.nullDevice
+        do {
+            try wd.run()           // 자식이지만 앱이 죽으면 launchd로 reparent되어 계속 폴링 → orphan 제거
+            storeWatchdog(wd)
+        } catch {
+            storeWatchdog(nil)
+        }
     }
 
     // MARK: - WinPE DISM 배포 인자
@@ -217,6 +269,8 @@ final class QEMURuntime {
                 outPipe.fileHandleForReading.readabilityHandler = nil
                 errPipe.fileHandleForReading.readabilityHandler = nil
                 try? FileManager.default.removeItem(atPath: qmpSocketPath)
+                self?.currentWatchdog()?.terminate()  // QEMU 정상 종료 → 워치독도 정리
+                self?.storeWatchdog(nil)
                 self?.storeProcess(nil)
                 if resumed.set() { cont.resume(returning: finished.terminationStatus) }
             }
@@ -224,6 +278,7 @@ final class QEMURuntime {
             do {
                 try proc.run()
                 onOutput("QEMU 프로세스 시작됨 (PID \(proc.processIdentifier))\n")
+                spawnWatchdog(qemuPID: proc.processIdentifier)  // 앱 강제종료 시 VM orphan 방지
             } catch {
                 timeout.cancel()
                 if resumed.set() { cont.resume(throwing: error) }
