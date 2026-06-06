@@ -68,9 +68,9 @@ setup.exe + autounattend 방식은 "Press any key to boot from CD"(El Torito) �
 
 1. 베이스라인 qcow2 위에 **COW 오버레이**(`qemu-img create -b`) + 신선한 UEFI 변수 사본.
 2. `SandboxConfig`(메모리/CPU/네트워킹/vGPU/공유폴더/클립보드/마이크/프린터/로그온 명령)를
-   QEMU 인자·RDP 플래그·설정 디스크로 번역.
-3. QEMU 부팅 → WDAGUtilityAccount 자동 로그온. 종료(또는 FreeRDP 창 닫힘) 시 disposable이면
-   오버레이/변수/설정 디스크 폐기.
+   QEMU 인자·RDP 플래그·설정 디스크로 번역. **기본값은 Windows Sandbox 표준**과 일치한다.
+3. QEMU 부팅 → 콘솔은 세션 없음(부트스트랩 계정 비활성), RDP로 WDAGUtilityAccount 로그온.
+   종료(또는 FreeRDP 창 닫힘) 시 disposable이면 오버레이/변수/설정 디스크 폐기.
 
 로그온 명령은 작은 FAT 설정 디스크의 `macsandbox-logon.cmd`로 전달되고, 베이스라인의
 로그온 에이전트(HKLM Run 키)가 실행한다.
@@ -86,12 +86,29 @@ Windows Sandbox 자신이 내부적으로 RDP를 쓰는 것과 같은 접근. �
   리다이렉션을 제공. (웹캠은 이 FreeRDP 빌드에 RDPECAM 채널이 없어 미지원.)
 
 QEMU는 user-mode NAT + `hostfwd=tcp:127.0.0.1:<port>-:3389`로 RDP를 호스트에 노출하고,
-FreeRDP가 `WDAGUtilityAccount`/빈 암호/`+sec:rdp`(NLA 우회)로 자동 로그온한다.
+FreeRDP가 `WDAGUtilityAccount`/빈 암호/`/sec:tls`(서버가 plain RDP를 SSL_REQUIRED로 거부)로 로그온한다.
 네트워킹 비활성 시 `restrict=on`으로 인터넷은 막되 RDP 포워딩은 유지.
 
 > user-mode hostfwd는 게스트 RDP 준비 전에도 호스트측 connect를 수락하므로 포트 폴링으로
 > 준비를 판정할 수 없다. 대신 FreeRDP를 **재시도 루프**로 띄워(짧게 실패=미준비→재시도,
 > 오래 살다 종료=세션 종료→QEMU 종료) 게스트 RDP가 뜨는 시점을 자연스럽게 따라간다.
+
+> **콘솔↔RDP 단일세션 경합 방지**: Win11 클라이언트 SKU는 인터랙티브 세션 1개라 콘솔 자동
+> 로그온이 RDP(WDAGUtilityAccount) 세션과 충돌한다. WDAGUtilityAccount는 콘솔 자동 로그온
+> 대상이 될 수 없고 `AutoAdminLogon=0`만으로는 OOBE 최초 자동 로그온을 못 막으므로, 베이스라인
+> FirstLogonCommands가 **부트스트랩 계정(sandboxsetup)을 비활성화**해 콘솔 세션이 안 생기게 한다.
+
+## UI 흐름 + 구성 입력
+
+GUI는 단일 창 라우터([ContentView](../src/MacSandbox/Views/ContentView.swift)):
+
+- **베이스라인 없음** → [BuildView](../src/MacSandbox/Views/ContentView.swift) (ISO + 에디션만 골라 1-round 빌드). 완료 시 자동 전환.
+- **베이스라인 있음** → 곧바로 샌드박스 시작([SandboxView](../src/MacSandbox/Views/SandboxView.swift)). 시작 버튼 없음.
+  - **부팅 중**: "샌드박스 부팅 중" 안내 + 현재 메시지만. 콘솔/로그는 "더 보기"로 펼친다.
+  - **RDP 확립**(`SandboxRunner.rdpConnected`, FreeRDP 동적 채널 로드 감지) → `NSApp.hide`로 앱 창을 숨겨 **FreeRDP 창만 남긴다**. 샌드박스 종료 시 다시 표시.
+  - **종료 후**: 다시 시작 / `.wsb` 불러오기.
+
+세부 옵션은 GUI 토글이 아니라 **`.wsb` 파일/커맨드라인 스위치**로 지정한다([WSBConfig](../src/MacSandbox/Core/WSBConfig.swift) / AppLaunch). 기본값은 Windows Sandbox 표준(네트워킹·클립보드·오디오 on, 웹캠·프린터 off, ~4GB).
 
 ## 구성 요소
 
@@ -106,6 +123,8 @@ FreeRDP가 `WDAGUtilityAccount`/빈 암호/`+sec:rdp`(NLA 우회)로 자동 로�
 | `GuestDrivers` | virtio-win ISO 확보(자동 다운로드/캐시) |
 | `SandboxRunner` / `SandboxConfig` | 일회용 샌드박스 실행(COW 오버레이 + RDP 하이브리드) |
 | `RDPSession` | FreeRDP 인자 빌드 + 재시도 실행 |
+| `WSBConfig` / `AppLaunch` | `.wsb`(XML) 파서 + 커맨드라인 스위치 → SandboxConfig |
+| `ContentView` / `BuildView` / `SandboxView` | 라우터(빌드↔시작 화면) + 각 화면 |
 | `QMPInput` / `VMConsole` | QMP 입력 주입 + 화면 폴링 |
 
 ## 의존성
@@ -118,4 +137,13 @@ FreeRDP가 `WDAGUtilityAccount`/빈 암호/`+sec:rdp`(NLA 우회)로 자동 로�
 
 ## CLI
 
-`MacSandbox --headless-build [ISO경로]` — GUI 없이 베이스라인 빌드 후 종료(검증/자동화용).
+- `MacSandbox --headless-build [ISO경로]` — GUI 없이 베이스라인 빌드 후 종료(검증/자동화용).
+- `MacSandbox <config.wsb>` / `MacSandbox --wsb <config.wsb>` — `.wsb` 구성으로 시작.
+- `MacSandbox --run [스위치...]` — 스위치로 구성 후 시작. 스위치:
+  `--memory <MB>` `--cpus <N>` `--networking on|off` `--vgpu on|off`
+  `--clipboard on|off` `--audio on|off` `--printer on|off`
+  `--folder <경로>[:ro]`(반복) `--logon "<명령>"`
+- 스위치/`.wsb` 미지정 시 GUI는 Windows Sandbox 표준 기본값으로 시작 화면을 띄운다.
+  `.wsb`/`--folder`/`--run`이 있으면 베이스라인 준비 시 자동 시작.
+
+`.wsb`는 Windows Sandbox와 호환되는 XML이다(예: `docs/sample.wsb`). HostFolder는 macOS 경로로 해석.
