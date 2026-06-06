@@ -1,3 +1,16 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+// Copyright (C) 2026 Nam Jung Hyun (rkttu) <rkttu.official@gmail.com>
+//
+// This file is part of MacSandbox, which is dual-licensed:
+//   (1) under the GNU General Public License v3.0 or later (see LICENSE), or
+//   (2) under a commercial license (see COMMERCIAL-LICENSE.md).
+// You may use this file under the terms of either license.
+//
+// MacSandbox is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+// FITNESS FOR A PARTICULAR PURPOSE.
+
 import Foundation
 
 /// Windows 무인 응답(unattend.xml) 생성.
@@ -71,8 +84,8 @@ final class UnattendBuilder {
                         </SynchronousCommand>
                         <SynchronousCommand wcm:action="add">
                             <Order>2</Order>
-                            <CommandLine>cmd /c net user WDAGUtilityAccount ""</CommandLine>
-                            <Description>blank password</Description>
+                            <CommandLine>cmd /c net user WDAGUtilityAccount "\(SandboxCreds.password)"</CommandLine>
+                            <Description>set fixed internal password (credential-based RDP auto-logon; blank-password auto-logon is unreliable)</Description>
                         </SynchronousCommand>
                         <SynchronousCommand wcm:action="add">
                             <Order>3</Order>

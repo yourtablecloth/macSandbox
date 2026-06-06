@@ -1,0 +1,27 @@
+<Configuration>
+  <!-- MacSandbox 샘플 구성 (.wsb). Windows Sandbox와 호환되는 스키마.
+       값은 Enable | Disable | Default. 미지정 항목은 Windows Sandbox 표준 기본값을 따른다.
+       HostFolder는 macOS 호스트 경로로 해석한다(~ 확장 지원). -->
+
+  <Networking>Enable</Networking>
+  <ClipboardRedirection>Enable</ClipboardRedirection>
+  <AudioInput>Enable</AudioInput>
+  <PrinterRedirection>Disable</PrinterRedirection>
+  <VideoInput>Disable</VideoInput>
+  <VGpu>Disable</VGpu>
+
+  <MemoryInMB>4096</MemoryInMB>
+  <!-- CpuCores는 Windows Sandbox엔 없는 MacSandbox 확장 항목 -->
+  <CpuCores>4</CpuCores>
+
+  <MappedFolders>
+    <MappedFolder>
+      <HostFolder>~/Downloads</HostFolder>
+      <ReadOnly>true</ReadOnly>
+    </MappedFolder>
+  </MappedFolders>
+
+  <LogonCommand>
+    <Command>cmd /c echo MacSandbox ready</Command>
+  </LogonCommand>
+</Configuration>
