@@ -56,20 +56,7 @@ struct SandboxView: View {
                 RDPHostView(host: "127.0.0.1", port: runner.rdpPort, rendered: $rdpRendered)
             }
             if !rdpRendered { bootOverlay }
-
-            // 종료 버튼 (항상 우상단 오버레이)
-            VStack {
-                HStack {
-                    Spacer()
-                    Button(role: .destructive) { runner.stop() } label: {
-                        Label("종료", systemImage: "stop.fill")
-                    }
-                    .controlSize(.large)
-                    .padding(12)
-                    .help("샌드박스를 종료합니다(일회용 — 변경사항 폐기)")
-                }
-                Spacer()
-            }
+            // 종료는 메뉴(샌드박스 › 샌드박스 종료 ⌘.) · 창 닫기 · ⌘Q로 제어한다(플로팅 버튼 제거).
         }
     }
 
