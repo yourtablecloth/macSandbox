@@ -594,6 +594,9 @@ static freerdp *eng_new_instance(RDPEngine *e) {
     // 오디오 재생(게스트→호스트): RDP 오디오 리다이렉션(rdpsnd). Windows가 게스트 드라이버 없이
     // 기본 제공하고, libfreerdp가 macOS CoreAudio(AudioToolbox) 백엔드로 재생.
     freerdp_settings_set_bool(s, FreeRDP_AudioPlayback, TRUE);
+    // 마이크(호스트→게스트): 오디오 입력 리다이렉션(audin). macOS AVFAudio 캡처 백엔드 사용.
+    // 최초 사용 시 macOS 마이크 권한 프롬프트(Info.plist NSMicrophoneUsageDescription).
+    freerdp_settings_set_bool(s, FreeRDP_AudioCapture, TRUE);
     if (e->reqW > 0 && e->reqH > 0) { // 초기 해상도(창 크기)가 정해져 있으면 그걸로 연결
         freerdp_settings_set_uint32(s, FreeRDP_DesktopWidth, (UINT32)(e->reqW & ~1));
         freerdp_settings_set_uint32(s, FreeRDP_DesktopHeight, (UINT32)(e->reqH & ~1));
