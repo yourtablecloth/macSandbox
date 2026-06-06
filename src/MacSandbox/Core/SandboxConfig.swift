@@ -34,23 +34,25 @@ struct SandboxConfig: Codable, Equatable {
     /// NAT 네트워킹 (WS 기본 on). on = virtio-net(NAT). 게스트 NetKVM 드라이버는 베이스라인에 주입됨.
     var networkingEnabled: Bool = true
 
-    /// 호스트 폴더 매핑 (`.wsb`의 MappedFolders). FreeRDP `/drive`로 리다이렉션.
+    /// 호스트 폴더 매핑 (`.wsb`의 MappedFolders). **현재 미구현** — 파싱·표시만 하고 실제
+    /// 마운트하지 않는다(임베드 엔진에 드라이브 리다이렉션 없음). 자세한 건 docs/wsb-support.md.
     var mappedFolders: [MappedFolder] = []
 
     /// 로그온 직후 게스트에서 실행할 명령 (`.wsb`의 LogonCommand). 베이스라인 로그온 에이전트가
     /// 설정 디스크의 `macsandbox-logon.cmd`를 실행하는 방식으로 전달된다.
     var logonCommand: String = ""
 
-    /// 마이크/오디오 공유 (WS 기본 on). FreeRDP `/microphone` + `/sound`.
+    /// 마이크 입력 공유 (`.wsb` AudioInput, WS 기본 on). 임베드 엔진 `AudioCapture`(audin)를 게이팅한다.
+    /// 스피커 재생(rdpsnd)은 `.wsb` 토글이 없어 항상 켜짐(Windows Sandbox와 동일).
     var audioInputEnabled: Bool = true
 
     /// 호스트 웹캠 입력 공유 (WS 기본 off). 현재 FreeRDP 빌드에 RDPECAM 채널 없어 미지원.
     var videoInputEnabled: Bool = false
 
-    /// 클립보드 복사/공유 (WS 기본 on). FreeRDP `+clipboard`.
+    /// 클립보드 복사/공유 (`.wsb` ClipboardRedirection, WS 기본 on). 임베드 엔진 `RedirectClipboard`를 게이팅.
     var clipboardEnabled: Bool = true
 
-    /// 프린터 리다이렉트 (WS 기본 off). FreeRDP `/printer`.
+    /// 프린터 리다이렉트 (`.wsb` PrinterRedirection, WS 기본 off). 임베드 엔진 `RedirectPrinters`(rdpdr+CUPS) 게이팅.
     var printerEnabled: Bool = false
 
     /// 메모리 크기 (MB). 호스트 RAM에 비례하되 **최소 4GB**(Windows 11 ARM 최소).
