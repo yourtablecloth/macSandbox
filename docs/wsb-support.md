@@ -26,7 +26,7 @@ MacSandbox는 Microsoft **Windows Sandbox**의 `.wsb`(XML) 구성 파일 스키�
 | `AudioInput` | 마이크 공유 | ✅ 지원 | 마이크(audin)를 게이팅. 스피커 재생(rdpsnd)은 `.wsb` 토글이 없어 상시(Windows Sandbox와 동일) |
 | `PrinterRedirection` | 프린터 공유 | ✅ 지원 | `RedirectPrinters`+rdpdr+CUPS → 호스트 프린터를 게스트에 등록(PRN1 검증). `Disable` 시 미등록 |
 | `vGPU` | GPU 가속(Disable 시 WARP) | ⚠️ 부분/의미 상이 | **QEMU 콘솔(VNC 부팅 모니터) 표시 장치**(ramfb↔virtio-gpu-pci)만 전환. 사용자 화면(RDP)엔 영향 없고 WDDM 가속 없음(DWM은 소프트웨어 합성) |
-| `MappedFolders` | 호스트 폴더 공유 | ✅ 지원 | RDP rdpdr drive로 지정 폴더만 게스트에 `\\tsclient\<name>`로 노출(읽기/쓰기 검증). `ReadOnly` 미강제, `SandboxFolder` 미파싱, 최대 16개 |
+| `MappedFolders` | 호스트 폴더 공유 | ✅ 지원 | RDP rdpdr drive로 `\\tsclient\<리프>` 노출 + 게스트에 자동 마운트(링크). `SandboxFolder` 지정 시 그 경로, 없으면 **WDAGUtilityAccount 바탕화면\리프**. `ReadOnly` 미강제, 최대 16개 |
 | `VideoInput` | 웹캠 공유 | ❌ 미지원 | RDPECAM 채널이 번들 libfreerdp에서 비활성 + macOS 카메라 백엔드 부재(별도 분석 참조) |
 | `ProtectedClient` | RDP AppContainer 강화 | ❌ 미지원 | 미파싱. Hyper-V AppContainer 개념이라 QEMU+RDP에 매핑 불가 |
 
@@ -51,11 +51,14 @@ MacSandbox는 Microsoft **Windows Sandbox**의 `.wsb`(XML) 구성 파일 스키�
 - **PrinterRedirection** — 엔진 `RedirectPrinters` + rdpdr + libfreerdp CUPS 백엔드로 호스트 프린터를
   게스트에 등록(검증: `registered [printer] device PRN1`). `Disable`(기본) 시 미등록.
 - **MappedFolders** — **RDP 수준 구현**(QEMU 9p/virtfs 아님): FreeRDP rdpdr drive 장치
-  (`freerdp_client_add_device_channel`)로 **지정 폴더만** 게스트에 노출. 게스트에서 `\\tsclient\<name>`
-  (드라이브명 = 폴더명, 충돌 시 번호)로 보이며 게스트 드라이버 불필요. 읽기+쓰기 end-to-end 검증됨
-  (게스트가 공유 파일을 읽어 다시 기록 → 호스트에 반영). 최대 16개.
-  *제한*: `ReadOnly`는 FreeRDP drive가 미지원이라 강제되지 않음(읽기/쓰기로 공유). `SandboxFolder` 미파싱.
-  `RedirectDrives`(핫플러그 전체 볼륨 공유)는 보안상 쓰지 않음.
+  (`freerdp_client_add_device_channel`)로 **지정 폴더만** 게스트에 `\\tsclient\<리프>`로 노출(드라이브명 =
+  폴더 리프, 충돌 시 번호). 게스트 드라이버 불필요, 읽기+쓰기 end-to-end 검증됨. 최대 16개.
+  - **게스트 마운트 위치**: 로그온 에이전트가 `\\tsclient\<리프>`에 링크를 만든다. `SandboxFolder` 지정 시
+    그 절대경로, 없으면 **WDAGUtilityAccount 바탕화면\리프**(Windows Sandbox와 동일).
+    개발자 모드(베이스라인에 활성화)면 `mklink /D` 심볼릭 링크(폴더처럼), 비활성 베이스라인에선 `.lnk`
+    바로가기로 폴백(검증됨). 심링크는 비상승 SeCreateSymbolicLinkPrivilege가 없어 개발자 모드가 필요.
+  - **제한**: `ReadOnly`는 FreeRDP drive가 미지원이라 강제되지 않음(읽기/쓰기로 공유 — 패치 빌드 외 불가).
+    `RedirectDrives`(핫플러그 전체 볼륨 공유)는 보안상 쓰지 않음.
 
 ### ⚠️ 부분 지원 (known limitation)
 
@@ -93,8 +96,10 @@ MacSandbox는 Microsoft **Windows Sandbox**의 `.wsb`(XML) 구성 파일 스키�
   <ClipboardRedirection>Enable</ClipboardRedirection>   <!-- ✅ Disable 시 클립보드 차단 -->
   <AudioInput>Enable</AudioInput>                        <!-- ✅ 마이크 게이팅(스피커는 상시) -->
   <PrinterRedirection>Enable</PrinterRedirection>        <!-- ✅ 호스트 프린터 → 게스트 -->
-  <MappedFolders>                                        <!-- ✅ \\tsclient\Shared 로 노출(ReadOnly 미강제) -->
+  <MappedFolders>                                        <!-- ✅ SandboxFolder 없으면 바탕화면\Shared 자동 마운트 -->
     <MappedFolder><HostFolder>~/Shared</HostFolder><ReadOnly>false</ReadOnly></MappedFolder>
+    <!-- SandboxFolder 지정 시 그 경로에 마운트: -->
+    <MappedFolder><HostFolder>~/Docs</HostFolder><SandboxFolder>C:\Users\WDAGUtilityAccount\Docs</SandboxFolder></MappedFolder>
   </MappedFolders>
   <!-- 아래는 파싱되지만 미지원: -->
   <VideoInput>Disable</VideoInput>                       <!-- ❌ 미지원(RDPECAM 부재) -->
