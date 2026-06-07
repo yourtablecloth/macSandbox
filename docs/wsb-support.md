@@ -26,7 +26,7 @@ MacSandbox는 Microsoft **Windows Sandbox**의 `.wsb`(XML) 구성 파일 스키�
 | `AudioInput` | 마이크 공유 | ✅ 지원 | 마이크(audin)를 게이팅. 스피커 재생(rdpsnd)은 `.wsb` 토글이 없어 상시(Windows Sandbox와 동일) |
 | `PrinterRedirection` | 프린터 공유 | ✅ 지원 | `RedirectPrinters`+rdpdr+CUPS → 호스트 프린터를 게스트에 등록(PRN1 검증). `Disable` 시 미등록 |
 | `vGPU` | GPU 가속(Disable 시 WARP) | ⚠️ 부분/의미 상이 | **QEMU 콘솔(VNC 부팅 모니터) 표시 장치**(ramfb↔virtio-gpu-pci)만 전환. 사용자 화면(RDP)엔 영향 없고 WDDM 가속 없음(DWM은 소프트웨어 합성) |
-| `MappedFolders` | 호스트 폴더 공유 | ❌ 미구현 | 파싱·요약 표시만. **실제 마운트 안 됨**(임베드 엔진에 드라이브/rdpdr 드라이브 리다이렉션 없음). `SandboxFolder` 미파싱 |
+| `MappedFolders` | 호스트 폴더 공유 | ✅ 지원 | RDP rdpdr drive로 지정 폴더만 게스트에 `\\tsclient\<name>`로 노출(읽기/쓰기 검증). `ReadOnly` 미강제, `SandboxFolder` 미파싱, 최대 16개 |
 | `VideoInput` | 웹캠 공유 | ❌ 미지원 | RDPECAM 채널이 번들 libfreerdp에서 비활성 + macOS 카메라 백엔드 부재(별도 분석 참조) |
 | `ProtectedClient` | RDP AppContainer 강화 | ❌ 미지원 | 미파싱. Hyper-V AppContainer 개념이라 QEMU+RDP에 매핑 불가 |
 
@@ -50,6 +50,12 @@ MacSandbox는 Microsoft **Windows Sandbox**의 `.wsb`(XML) 구성 파일 스키�
   최초 마이크 사용 시 macOS 권한 프롬프트.
 - **PrinterRedirection** — 엔진 `RedirectPrinters` + rdpdr + libfreerdp CUPS 백엔드로 호스트 프린터를
   게스트에 등록(검증: `registered [printer] device PRN1`). `Disable`(기본) 시 미등록.
+- **MappedFolders** — **RDP 수준 구현**(QEMU 9p/virtfs 아님): FreeRDP rdpdr drive 장치
+  (`freerdp_client_add_device_channel`)로 **지정 폴더만** 게스트에 노출. 게스트에서 `\\tsclient\<name>`
+  (드라이브명 = 폴더명, 충돌 시 번호)로 보이며 게스트 드라이버 불필요. 읽기+쓰기 end-to-end 검증됨
+  (게스트가 공유 파일을 읽어 다시 기록 → 호스트에 반영). 최대 16개.
+  *제한*: `ReadOnly`는 FreeRDP drive가 미지원이라 강제되지 않음(읽기/쓰기로 공유). `SandboxFolder` 미파싱.
+  `RedirectDrives`(핫플러그 전체 볼륨 공유)는 보안상 쓰지 않음.
 
 ### ⚠️ 부분 지원 (known limitation)
 
@@ -60,11 +66,6 @@ MacSandbox는 Microsoft **Windows Sandbox**의 `.wsb`(XML) 구성 파일 스키�
 
 ### ❌ 미지원 (known limitation)
 
-- **MappedFolders** — `HostFolder`/`ReadOnly`는 파싱되고 요약에도 보이지만 **실제로 마운트되지 않는다**.
-  임베드 RDP 엔진에 드라이브 리다이렉션(rdpdr/`RedirectDrives`)이 없고, 유일한 참조는 은퇴한 sdl-freerdp
-  경로뿐이다. `SandboxFolder` 하위 요소도 파싱하지 않는다.
-  *대안*: `LogonCommand`로 게스트 내부에서 파일을 내려받거나, 클립보드 파일 붙여넣기로 전달.
-  *향후*: 임베드 엔진에 rdpdr 드라이브 리다이렉션을 붙이면 지원 가능(프린터와 동일한 rdpdr 토대 존재).
 - **VideoInput(웹캠)** — 번들 libfreerdp가 RDPECAM(`[MS-RDPECAM]`) 채널을 빌드에서 끔
   (`This build does not support [MS-RDPECAM]…`). 게다가 FreeRDP 업스트림 카메라 백엔드는 Linux `v4l`뿐이라
   macOS(AVFoundation) 백엔드가 없다. 지원하려면 libfreerdp 리빌드 + macOS 카메라 백엔드 신규 작성이 필요하다.
@@ -92,10 +93,10 @@ MacSandbox는 Microsoft **Windows Sandbox**의 `.wsb`(XML) 구성 파일 스키�
   <ClipboardRedirection>Enable</ClipboardRedirection>   <!-- ✅ Disable 시 클립보드 차단 -->
   <AudioInput>Enable</AudioInput>                        <!-- ✅ 마이크 게이팅(스피커는 상시) -->
   <PrinterRedirection>Enable</PrinterRedirection>        <!-- ✅ 호스트 프린터 → 게스트 -->
-  <!-- 아래는 파싱되지만 미지원: -->
-  <MappedFolders>                                        <!-- ❌ 마운트 안 됨 -->
-    <MappedFolder><HostFolder>~/Shared</HostFolder><ReadOnly>true</ReadOnly></MappedFolder>
+  <MappedFolders>                                        <!-- ✅ \\tsclient\Shared 로 노출(ReadOnly 미강제) -->
+    <MappedFolder><HostFolder>~/Shared</HostFolder><ReadOnly>false</ReadOnly></MappedFolder>
   </MappedFolders>
+  <!-- 아래는 파싱되지만 미지원: -->
   <VideoInput>Disable</VideoInput>                       <!-- ❌ 미지원(RDPECAM 부재) -->
   <ProtectedClient>Disable</ProtectedClient>             <!-- ❌ 미파싱 -->
 </Configuration>

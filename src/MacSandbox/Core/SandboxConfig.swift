@@ -34,8 +34,8 @@ struct SandboxConfig: Codable, Equatable {
     /// NAT 네트워킹 (WS 기본 on). on = virtio-net(NAT). 게스트 NetKVM 드라이버는 베이스라인에 주입됨.
     var networkingEnabled: Bool = true
 
-    /// 호스트 폴더 매핑 (`.wsb`의 MappedFolders). **현재 미구현** — 파싱·표시만 하고 실제
-    /// 마운트하지 않는다(임베드 엔진에 드라이브 리다이렉션 없음). 자세한 건 docs/wsb-support.md.
+    /// 호스트 폴더 매핑 (`.wsb`의 MappedFolders). RDP rdpdr drive 리다이렉션으로 지정 폴더만
+    /// 게스트에 `\\tsclient\<폴더명>`으로 노출(읽기/쓰기). readOnly는 FreeRDP drive 미지원(미강제).
     var mappedFolders: [MappedFolder] = []
 
     /// 로그온 직후 게스트에서 실행할 명령 (`.wsb`의 LogonCommand). 베이스라인 로그온 에이전트가
