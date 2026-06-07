@@ -13,6 +13,10 @@
 
 #include "rdp_engine.h"
 
+// freerdp 3.x 헤더는 구조체에 deprecated 멤버(pVerifyCertificate 등)를 선언해 include만 해도
+// -Wdeprecated-declarations 경고가 난다. 헤더 노이즈만 억제하고(내 코드 경고는 유지) pop한다.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
 #include <freerdp/freerdp.h>
 #include <freerdp/gdi/gdi.h>
 #include <freerdp/codec/color.h>
@@ -34,6 +38,7 @@
 #include <winpr/string.h>
 #include <winpr/input.h>
 #include <winpr/shell.h>
+#pragma clang diagnostic pop
 
 #include <pthread.h>
 #include <stdlib.h>
@@ -167,8 +172,8 @@ static BOOL eng_load_channels(freerdp *instance) {
 
 static BOOL eng_pre_connect(freerdp *instance) { (void)instance; return TRUE; }
 
-static BOOL eng_authenticate(freerdp *instance, char **u, char **p, char **d) {
-    (void)instance; (void)u; (void)p; (void)d; return TRUE;
+static BOOL eng_authenticate(freerdp *instance, char **u, char **p, char **d, rdp_auth_reason reason) {
+    (void)instance; (void)u; (void)p; (void)d; (void)reason; return TRUE;
 }
 
 static DWORD eng_verify_cert(freerdp *instance, const char *host, UINT16 port,
@@ -571,7 +576,7 @@ static freerdp *eng_new_instance(RDPEngine *e) {
     instance->PreConnect = eng_pre_connect;
     instance->PostConnect = eng_post_connect;
     instance->LoadChannels = eng_load_channels;
-    instance->Authenticate = eng_authenticate;
+    instance->AuthenticateEx = eng_authenticate;
     instance->VerifyCertificateEx = eng_verify_cert;
     if (!freerdp_context_new(instance)) { freerdp_free(instance); return NULL; }
     ((engContext *)instance->context)->engine = e;
