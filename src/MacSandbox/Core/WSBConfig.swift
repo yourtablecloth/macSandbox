@@ -80,8 +80,9 @@ enum WSBConfig {
             for folder in mf.elements(forName: "MappedFolder") {
                 guard let host = text("HostFolder", in: folder), !host.isEmpty else { continue }
                 let ro = text("ReadOnly", in: folder)?.lowercased() == "true"
+                let sandbox = text("SandboxFolder", in: folder) ?? ""  // 비우면 바탕화면 자동 마운트
                 c.mappedFolders.append(MappedFolder(
-                    hostPath: (host as NSString).expandingTildeInPath, readOnly: ro))
+                    hostPath: (host as NSString).expandingTildeInPath, readOnly: ro, sandboxPath: sandbox))
             }
         }
         return c

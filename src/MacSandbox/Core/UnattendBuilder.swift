@@ -139,11 +139,16 @@ final class UnattendBuilder {
                         </SynchronousCommand>
                         <SynchronousCommand wcm:action="add">
                             <Order>13</Order>
+                            <CommandLine>reg add "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\AppModelUnlock" /v AllowDevelopmentWithoutDevLicense /t REG_DWORD /d 1 /f</CommandLine>
+                            <Description>enable Developer Mode so non-elevated logon agent can create symlinks (mapped folder Desktop mount); falls back to .lnk shortcut otherwise</Description>
+                        </SynchronousCommand>
+                        <SynchronousCommand wcm:action="add">
+                            <Order>14</Order>
                             <CommandLine>cmd /c net user sandboxsetup /active:no</CommandLine>
                             <Description>disable bootstrap account so it cannot console-autologon (AutoAdminLogon=0 alone does not stop the OOBE first-boot autologon; disabling the account does). RDP(WDAGUtilityAccount) becomes the sole session.</Description>
                         </SynchronousCommand>
                         <SynchronousCommand wcm:action="add">
-                            <Order>14</Order>
+                            <Order>15</Order>
                             <CommandLine>cmd /c shutdown /s /t 15 /f</CommandLine>
                             <Description>shutdown to finalize baseline</Description>
                         </SynchronousCommand>

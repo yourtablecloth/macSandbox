@@ -80,6 +80,28 @@ struct SandboxConfig: Codable, Equatable {
         let cap = max(4096, hostMB - 4096)   // 호스트에 최소 4GB 남김
         return min(max(4096, hostMB / 2), cap)
     }
+
+    /// 공유 폴더 → 게스트 노출 정보. 드라이브명 = 폴더 리프(충돌 시 번호). 링크 경로는
+    /// SandboxFolder가 있으면 그 절대경로, 없으면 WDAGUtilityAccount 바탕화면\리프.
+    /// RDP rdpdr 드라이브명과 로그온 마운트가 동일 이름을 쓰도록 단일 산출점.
+    func resolvedMounts() -> [ResolvedMount] {
+        var used = Set<String>()
+        var result: [ResolvedMount] = []
+        for f in mappedFolders where !f.hostPath.isEmpty {
+            let leaf = (f.hostPath as NSString).lastPathComponent
+            let base = leaf.isEmpty ? "share" : leaf
+            var name = base
+            var i = 2
+            while used.contains(name.lowercased()) { name = "\(base)\(i)"; i += 1 }
+            used.insert(name.lowercased())
+            let link = f.sandboxPath.isEmpty
+                ? "C:\\Users\\\(SandboxCreds.username)\\Desktop\\\(name)"
+                : f.sandboxPath
+            result.append(ResolvedMount(hostPath: f.hostPath, driveName: name,
+                                        guestLinkPath: link, readOnly: f.readOnly))
+        }
+        return result
+    }
 }
 
 /// 호스트 ↔ 게스트 폴더 매핑 (`.wsb`의 MappedFolder)
@@ -87,6 +109,18 @@ struct MappedFolder: Codable, Equatable, Identifiable {
     var id = UUID()
     var hostPath: String
     var readOnly: Bool = false
+    /// `.wsb`의 SandboxFolder(게스트 내 절대경로). 비우면 WDAGUtilityAccount 바탕화면에
+    /// 폴더 리프명으로 자동 마운트. (런타임 전용 — 영속 직렬화하지 않음)
+    var sandboxPath: String = ""
 
     private enum CodingKeys: String, CodingKey { case hostPath, readOnly }
+}
+
+/// 공유 폴더의 게스트 노출 정보(드라이브명/링크 경로). RDP rdpdr drive 이름과 로그온 마운트가
+/// 동일 이름을 쓰도록 한 곳에서 산출한다.
+struct ResolvedMount: Equatable {
+    let hostPath: String       // 호스트 절대경로
+    let driveName: String      // 게스트 rdpdr 드라이브명 → \\tsclient\<driveName>
+    let guestLinkPath: String  // 게스트에서 만들 심볼릭 링크 경로(SandboxFolder 또는 바탕화면\리프)
+    let readOnly: Bool
 }

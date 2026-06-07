@@ -74,12 +74,12 @@ final class SandboxRunner: ObservableObject {
             try fm.copyItem(atPath: varsTemplate.path, toPath: efiVarsPath)
             appendLog("COW 오버레이: \(overlayPath)")
 
-            // 2. (선택) 설정 디스크 — LogonCommand 전달
-            if !config.logonCommand.isEmpty {
+            // 2. (선택) 설정 디스크 — 공유 폴더 자동 마운트(mklink) + LogonCommand 전달
+            if !config.logonCommand.isEmpty || !config.mappedFolders.isEmpty {
                 let path = SandboxPaths.overlaysDir.appendingPathComponent("\(id)-cfg.img").path
-                try makeConfigDisk(logonCommand: config.logonCommand, at: path)
+                try makeConfigDisk(script: buildLogonScript(config: config), at: path)
                 configDiskPath = path
-                appendLog("설정 디스크(LogonCommand): \(path)")
+                appendLog("설정 디스크: 마운트 \(config.mappedFolders.count)개, 로그온명령 \(config.logonCommand.isEmpty ? "없음" : "있음")")
             }
 
             // 3. QEMU 실행 (부팅 모니터링용 VNC 콘솔) + RDP 포트포워딩
@@ -149,8 +149,41 @@ final class SandboxRunner: ObservableObject {
         }
     }
 
-    /// LogonCommand를 담은 작은 FAT16 설정 디스크 생성 (베이스라인 로그온 에이전트가 읽음)
-    private func makeConfigDisk(logonCommand: String, at path: String) throws {
+    /// 베이스라인 로그온 에이전트가 실행할 macsandbox-logon.cmd 본문 생성.
+    /// 공유 폴더를 게스트에 마운트(mklink /D 바탕화면\리프 또는 SandboxFolder → \\tsclient\드라이브)한 뒤
+    /// 사용자 LogonCommand를 실행한다(Windows Sandbox와 동일 순서: 폴더 매핑 → 로그온 명령).
+    private func buildLogonScript(config: SandboxConfig) -> String {
+        let mounts = config.resolvedMounts()
+        var lines = ["@echo off"]
+        for m in mounts {
+            lines.append("call :mount \"\(m.driveName)\" \"\(m.guestLinkPath)\"")
+        }
+        if !config.logonCommand.isEmpty { lines.append(config.logonCommand) }
+        if !mounts.isEmpty {
+            // 서브루틴: rdpdr 드라이브가 준비될 때까지 대기 후 심볼릭 링크 생성(local→remote 심링크 평가는 기본 허용).
+            lines += [
+                "goto :eof", "",
+                ":mount", "setlocal",
+                "set \"SRC=\\\\tsclient\\%~1\"",
+                "set /a n=0",
+                ":w",
+                "if exist \"%SRC%\\\" goto :l",
+                "set /a n+=1",
+                "if %n% geq 20 goto :e",
+                "ping -n 2 127.0.0.1 >nul",
+                "goto :w",
+                ":l",
+                // 심링크 우선(개발자 모드면 비상승도 가능 → 폴더처럼 마운트). 실패 시 바로가기(.lnk) 폴백.
+                "if not exist \"%~2\" if not exist \"%~2.lnk\" mklink /D \"%~2\" \"%SRC%\" >nul 2>&1",
+                "if not exist \"%~2\" if not exist \"%~2.lnk\" powershell -NoProfile -Command \"$s=(New-Object -ComObject WScript.Shell).CreateShortcut('%~2.lnk');$s.TargetPath='%SRC%';$s.Save()\"",
+                ":e", "endlocal", "goto :eof",
+            ]
+        }
+        return lines.joined(separator: "\r\n") + "\r\n"
+    }
+
+    /// 로그온 스크립트를 담은 작은 FAT16 설정 디스크 생성 (베이스라인 로그온 에이전트가 읽음)
+    private func makeConfigDisk(script: String, at path: String) throws {
         if fm.fileExists(atPath: path) { try fm.removeItem(atPath: path) }
         guard fm.createFile(atPath: path, contents: nil) else {
             throw BuildError.installFailed("설정 디스크 생성 실패")
@@ -172,7 +205,6 @@ final class SandboxRunner: ObservableObject {
             .split(separator: ":", maxSplits: 1).last?.trimmingCharacters(in: .whitespaces), !mp.isEmpty else {
             throw BuildError.installFailed("설정 디스크 마운트 실패")
         }
-        let script = "@echo off\r\n\(logonCommand)\r\n"
         try script.write(toFile: (mp as NSString).appendingPathComponent("macsandbox-logon.cmd"),
                          atomically: true, encoding: .utf8)
         _ = try? shellCapture("/usr/sbin/diskutil", ["unmount", dev])

@@ -57,7 +57,7 @@ struct SandboxView: View {
                             clipboardEnabled: runner.activeConfig.clipboardEnabled,
                             micEnabled: runner.activeConfig.audioInputEnabled,
                             printerEnabled: runner.activeConfig.printerEnabled,
-                            mappedFolders: runner.activeConfig.mappedFolders,
+                            mounts: runner.activeConfig.resolvedMounts(),
                             rendered: $rdpRendered)
             }
             if !rdpRendered { bootOverlay }
