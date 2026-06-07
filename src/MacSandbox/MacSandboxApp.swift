@@ -46,6 +46,7 @@ enum AppEntry {
             if let v = env["MSBX_CLIPBOARD"] { RDPViewTest.clipboard = (v != "0") }
             if let v = env["MSBX_MIC"] { RDPViewTest.mic = (v != "0") }
             if let v = env["MSBX_PRINTER"] { RDPViewTest.printer = (v != "0") }
+            if let v = env["MSBX_DRIVE"], !v.isEmpty { RDPViewTest.drivePath = v }
             RDPViewTestApp.main()
             return
         }

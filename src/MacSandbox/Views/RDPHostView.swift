@@ -25,6 +25,8 @@ struct RDPHostView: NSViewRepresentable {
     var clipboardEnabled: Bool = true
     var micEnabled: Bool = true
     var printerEnabled: Bool = false
+    /// 공유 폴더(.wsb MappedFolders). 게스트에 리다이렉트 드라이브로 노출.
+    var mappedFolders: [MappedFolder] = []
     /// 첫 RDP 프레임이 렌더되면 true (부팅 오버레이 → RDP 화면 전환용).
     @Binding var rendered: Bool
 
@@ -37,6 +39,15 @@ struct RDPHostView: NSViewRepresentable {
         v.clipboardEnabled = clipboardEnabled   // connect 전에 설정(엔진 생성 시 반영)
         v.micEnabled = micEnabled
         v.printerEnabled = printerEnabled
+        var usedNames = Set<String>()           // 게스트 드라이브 라벨(폴더명, 충돌 시 번호)
+        for folder in mappedFolders {
+            let base = (folder.hostPath as NSString).lastPathComponent
+            var name = base.isEmpty ? "share" : base
+            var i = 2
+            while usedNames.contains(name) { name = "\(base)\(i)"; i += 1 }
+            usedNames.insert(name)
+            v.addMappedFolder(folder.hostPath, name: name, readOnly: folder.readOnly)
+        }
         v.connect(toHost: host, port: Int32(port), username: username, password: password)
         return v
     }
@@ -74,6 +85,8 @@ private struct RDPViewTestContainer: View {
                     clipboardEnabled: RDPViewTest.clipboard,
                     micEnabled: RDPViewTest.mic,
                     printerEnabled: RDPViewTest.printer,
+                    mappedFolders: RDPViewTest.drivePath.isEmpty ? [] :
+                        [MappedFolder(hostPath: RDPViewTest.drivePath, readOnly: false)],
                     rendered: $rendered)
     }
 }
@@ -84,4 +97,5 @@ enum RDPViewTest {
     static var clipboard = true
     static var mic = true
     static var printer = false
+    static var drivePath = ""
 }

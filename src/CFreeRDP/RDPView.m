@@ -37,6 +37,8 @@
     double _frameMsAccum;
     int _frameCount;
     CFAbsoluteTime _lastReport;
+
+    NSMutableArray<NSDictionary *> *_mappedFolders; // 공유 폴더(연결 전 수집)
 }
 
 - (instancetype)initWithFrame:(NSRect)frameRect {
@@ -52,6 +54,7 @@
         _clipboardEnabled = YES;   // .wsb 기본(Windows Sandbox와 동일)
         _micEnabled = YES;
         _printerEnabled = NO;
+        _mappedFolders = [NSMutableArray array];
     }
     return self;
 }
@@ -241,12 +244,23 @@ static void rv_on_remote_files(void *ud, const char *const *paths, int count) {
                                 rv_on_frame, rv_on_status, rv_on_remote_text,
                                 (__bridge void *)self);
     rdp_engine_set_features(_engine, _clipboardEnabled, _micEnabled, _printerEnabled);
+    for (NSDictionary *f in _mappedFolders) {
+        rdp_engine_add_mapped_folder(_engine, [f[@"path"] UTF8String], [f[@"name"] UTF8String],
+                                     [f[@"readOnly"] boolValue] ? 1 : 0);
+    }
     rdp_engine_set_files_callback(_engine, rv_on_remote_files);
     rdp_engine_start(_engine);
     // 로컬 클립보드 변경 감시(local→remote)
     _lastChangeCount = NSPasteboard.generalPasteboard.changeCount;
     _clipTimer = [NSTimer scheduledTimerWithTimeInterval:0.5 target:self
                   selector:@selector(checkLocalClipboard) userInfo:nil repeats:YES];
+}
+
+- (void)addMappedFolder:(NSString *)hostPath name:(NSString *)name readOnly:(BOOL)readOnly {
+    if (hostPath.length == 0) return;
+    [_mappedFolders addObject:@{ @"path": hostPath,
+                                 @"name": name ?: @"share",
+                                 @"readOnly": @(readOnly) }];
 }
 
 - (void)checkLocalClipboard {

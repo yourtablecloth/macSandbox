@@ -96,6 +96,8 @@ struct RDPEngine {
     int featClipboard;           // 클립보드 리다이렉션 on/off(.wsb ClipboardRedirection)
     int featMic;                 // 마이크 캡처 on/off(.wsb AudioInput). 스피커 재생은 상시.
     int featPrinter;             // 프린터 리다이렉션 on/off(.wsb PrinterRedirection)
+    struct { char path[2048]; char name[256]; } mapped[16]; // 공유 폴더(.wsb MappedFolders)
+    int mappedCount;
 
     UINT32 fileFormatId;         // 서버가 알린 "FileGroupDescriptorW" 포맷 ID(0=없음)
     UINT32 pendingFormatId;      // 마지막 ClientFormatDataRequest의 포맷(응답 구분용)
@@ -599,6 +601,12 @@ static freerdp *eng_new_instance(RDPEngine *e) {
     freerdp_settings_set_bool(s, FreeRDP_SupportDisplayControl, TRUE); // 동적 해상도
     // 프린터 리다이렉션(.wsb PrinterRedirection): rdpdr + CUPS 백엔드(호스트 프린터→게스트).
     freerdp_settings_set_bool(s, FreeRDP_RedirectPrinters, e->featPrinter ? TRUE : FALSE);
+    // 공유 폴더(.wsb MappedFolders): rdpdr drive 장치로 **지정 디렉토리만** 게스트에 노출.
+    // RedirectDrives=TRUE는 핫플러그로 호스트 전체 볼륨까지 공유하므로 쓰지 않는다(보안).
+    for (int i = 0; i < e->mappedCount; i++) {
+        const char *args[] = { "drive", e->mapped[i].name, e->mapped[i].path };
+        freerdp_client_add_device_channel(s, 3, args);
+    }
     // 오디오 재생(게스트→호스트, 스피커): rdpsnd + macOS CoreAudio. .wsb엔 토글이 없어 상시 켬
     // (Windows Sandbox도 게스트 오디오를 항상 호스트로 재생).
     freerdp_settings_set_bool(s, FreeRDP_AudioPlayback, TRUE);
@@ -698,6 +706,20 @@ void rdp_engine_set_features(RDPEngine *e, int clipboard, int mic, int printer) 
     e->featClipboard = clipboard ? 1 : 0;
     e->featMic = mic ? 1 : 0;
     e->featPrinter = printer ? 1 : 0;
+}
+
+// 호스트 폴더 공유(.wsb MappedFolder). rdp_engine_start 전에 호출. readOnly는 FreeRDP drive가
+// 미지원이라 읽기/쓰기로 공유된다(요청 시 경고만).
+void rdp_engine_add_mapped_folder(RDPEngine *e, const char *hostPath, const char *name, int readOnly) {
+    if (!e || !hostPath || !hostPath[0] || e->mappedCount >= 16) return;
+    int i = e->mappedCount;
+    snprintf(e->mapped[i].path, sizeof(e->mapped[i].path), "%s", hostPath);
+    snprintf(e->mapped[i].name, sizeof(e->mapped[i].name), "%s",
+             (name && name[0]) ? name : "share");
+    e->mappedCount++;
+    if (readOnly)
+        fprintf(stderr, "[drive] '%s' 읽기전용 요청 — FreeRDP drive 미지원, 읽기/쓰기로 공유\n",
+                e->mapped[i].name);
 }
 
 void rdp_engine_set_files_callback(RDPEngine *e, RDPClipboardFilesCallback cb) {

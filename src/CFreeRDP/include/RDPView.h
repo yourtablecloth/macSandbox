@@ -38,4 +38,8 @@
 @property (nonatomic) BOOL micEnabled;
 @property (nonatomic) BOOL printerEnabled;
 
+/// 공유 폴더 추가(.wsb MappedFolder). connectToHost 전에 폴더마다 호출.
+/// 게스트에 리다이렉트 드라이브로 노출. readOnly는 미강제(읽기/쓰기 공유).
+- (void)addMappedFolder:(NSString *)hostPath name:(NSString *)name readOnly:(BOOL)readOnly;
+
 @end

@@ -46,6 +46,10 @@ RDPEngine *rdp_engine_create(const char *host, int port,
 // (클립보드 on, 마이크 on, 프린터 off). 스피커 재생은 항상 켜짐(.wsb 토글 없음).
 void rdp_engine_set_features(RDPEngine *engine, int clipboard, int mic, int printer);
 
+// 호스트 폴더 공유(.wsb MappedFolder). rdp_engine_start 전에 폴더마다 호출(최대 16개).
+// 게스트에 리다이렉트 드라이브로 노출된다. readOnly는 FreeRDP drive 미지원(읽기/쓰기로 공유).
+void rdp_engine_add_mapped_folder(RDPEngine *engine, const char *hostPath, const char *name, int readOnly);
+
 void rdp_engine_start(RDPEngine *engine); // 백그라운드 스레드에서 연결+이벤트 루프
 void rdp_engine_stop(RDPEngine *engine);  // 중단 요청
 void rdp_engine_free(RDPEngine *engine);  // 정리(중단 후 스레드 조인)
