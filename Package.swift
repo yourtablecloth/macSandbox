@@ -2,7 +2,7 @@
 
 import PackageDescription
 
-// FreeRDP(brew) 경로. 임베드 RDP 뷰(libfreerdp 직접 링크) PoC용.
+// FreeRDP(brew) 경로. 임베드 RDP 뷰(libfreerdp 직접 링크).
 let freerdpInclude = "/opt/homebrew/include/freerdp3"
 let winprInclude = "/opt/homebrew/include/winpr3"
 let brewLib = "/opt/homebrew/lib"
@@ -20,7 +20,10 @@ let package = Package(
             cSettings: [
                 .unsafeFlags([
                     "-I\(freerdpInclude)",
-                    "-I\(winprInclude)"
+                    "-I\(winprInclude)",
+                    // freerdp 3.x 헤더는 구조체에 deprecated 멤버를 선언해 include만 해도 경고가 난다.
+                    // 서드파티 브리지 타깃이므로 deprecation 경고를 일괄 억제한다.
+                    "-Wno-deprecated-declarations"
                 ])
             ]
         ),
