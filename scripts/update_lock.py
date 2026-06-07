@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 import urllib.error
 import urllib.parse
@@ -207,7 +208,18 @@ def main() -> None:
     parser.add_argument("--output", type=Path, default=DEFAULT_LOCKFILE, help="출력 lockfile 경로")
     parser.add_argument("--dry-run", action="store_true", help="변경 사항만 출력하고 파일은 수정하지 않음")
     parser.add_argument("--check", action="store_true", help="GHCR에 bottle이 아직 존재하는지 확인")
+    parser.add_argument("--root", help="이 formula + 전이 의존성(brew deps)으로 패키지 목록 산출 (예: freerdp)")
     args = parser.parse_args()
+
+    # --root: brew deps로 패키지 목록을 동적으로 산출 (기본 qemu 목록 대신)
+    global REQUIRED_PACKAGES
+    if args.root:
+        r = subprocess.run(["brew", "deps", args.root], capture_output=True, text=True)
+        if r.returncode != 0:
+            sys.exit(f"오류: brew deps {args.root} 실패 — {r.stderr.strip()}")
+        deps = [d for d in r.stdout.split() if d]
+        REQUIRED_PACKAGES = [args.root] + deps
+        print(f"'{args.root}' + 전이 의존성 {len(deps)}개 → {len(REQUIRED_PACKAGES)}개 패키지")
 
     # --check 모드: GHCR 가용성만 확인하고 종료
     if args.check:

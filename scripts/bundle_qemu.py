@@ -444,6 +444,13 @@ def codesign_all(vendor_dir: Path) -> None:
 
     log(f"코드 서명: {count}개 파일", indent=1)
 
+    # qemu-system-aarch64는 HVF 사용을 위해 hypervisor entitlement로 재서명(없으면 부팅 시 HVF 실패).
+    ent = SCRIPT_DIR / "hypervisor.entitlements"
+    qemu_hvf = bin_dir / "qemu-system-aarch64"
+    if ent.exists() and qemu_hvf.exists():
+        run(["codesign", "--force", "--sign", "-", "--entitlements", str(ent), str(qemu_hvf)])
+        log("hypervisor entitlement: qemu-system-aarch64", indent=1)
+
 
 # ---------------------------------------------------------------------------
 # 검증

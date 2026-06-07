@@ -1,152 +1,153 @@
 {
   "lockfile_version": 1,
-  "created": "2026-03-10",
-  "bottle_tag": "arm64_tahoe",
+  "_note": "qemu는 10.2.1로 핀(arm64_sonoma=macOS14). 11.x는 HVF에서 SME 레지스터 assertion으로 크래시하므로 update_lock.py로 무심코 bump 금지 — HVF 부팅 테스트 후에만 갱신.",
+  "created": "2026-06-07",
+  "bottle_tag": "arm64_sonoma",
   "packages": {
     "qemu": {
       "version": "10.2.1",
-      "sha256": "033d2157dda25d3ec6ec98b0bffbc81d803b3a2a0d3a2e89c2fd7611454f73f6",
-      "filename": "488be381ed3b5ce5c1f623faebe590d8925d17f4f18a76418505b4074b568d0a--qemu--10.2.1.arm64_tahoe.bottle.1.tar.gz"
+      "sha256": "51042c5a320cf5ce1e8b2eeef66e6038e6b967ca13682c333836b41a7e098e2d",
+      "filename": "qemu--10.2.1.arm64_sonoma.bottle.tar.gz"
     },
     "capstone": {
-      "version": "5.0.7",
-      "sha256": "921a27cf982706500e7e16c12cc5ae870c24d81e777da7c148b8567a49a72e76",
-      "filename": "f6ddbf68469a1916b0bbdf1302e211edf62480ec84f1cb15dfcffe34dce85bef--capstone--5.0.7.arm64_tahoe.bottle.tar.gz"
+      "version": "5.0.9",
+      "sha256": "bbe5f0825fb2511229677b4cd56d88b7c85efc88b537acfc77c41266424983ae",
+      "filename": "capstone--5.0.9.arm64_sonoma.bottle.tar.gz"
     },
     "dtc": {
-      "version": "1.7.2",
-      "sha256": "e651c82ed69b6efd392728727fe0a9d4831cbcd1decca9b6a17bf307e44d81cb",
-      "filename": "c0f107b693c3488948a671eeb9850dfa9a5b5a875f0217425c2902d3d75cef21--dtc--1.7.2.arm64_tahoe.bottle.tar.gz"
+      "version": "1.8.1",
+      "sha256": "5096223d06fe3abcc5d668b1dbc86c8f9b3b96d96c382afb16dfa580000b3379",
+      "filename": "dtc--1.8.1.arm64_sonoma.bottle.tar.gz"
     },
     "glib": {
-      "version": "2.86.4",
-      "sha256": "6239b7f0d4fa176cfce317640ee848b56bc643e7b70c80eeaeec17fb9c00b480",
-      "filename": "edce149f6dd9ff542c3a9a4a1507f670afde7ece7651941d8110e0496376a5a3--glib--2.86.4.arm64_tahoe.bottle.tar.gz"
+      "version": "2.88.1",
+      "sha256": "3150238b4703af5bc41fea321a10c46de9270b8877a189c06c867df2f03ec675",
+      "filename": "glib--2.88.1.arm64_sonoma.bottle.tar.gz"
     },
     "gnutls": {
-      "version": "3.8.12",
-      "sha256": "df6bfd97301eefdd39186a84e2089cd6b2ac62655a5bcf005e23c1b1e6631628",
-      "filename": "4f51a4badb6af5475bbfa6e55758510e7fbe5145b487b785fb58b3b78eff01f5--gnutls--3.8.12.arm64_tahoe.bottle.tar.gz"
+      "version": "3.8.13_2",
+      "sha256": "f0e71d1231213068342c729c70cf8dd5421ec1c87d5b2d21736db4fe4803a301",
+      "filename": "gnutls--3.8.13_2.arm64_sonoma.bottle.tar.gz"
     },
     "jpeg-turbo": {
-      "version": "3.1.3",
-      "sha256": "9fe20e744abc20f8b032df797d921daa8ec012ebb36d65f7b1c86673a3d34aef",
-      "filename": "674121b559c0b23a867c4c0e0e6bd0e9cf38c7be318d9d282525be8d6b8b156a--jpeg-turbo--3.1.3.arm64_tahoe.bottle.tar.gz"
+      "version": "3.1.4.1",
+      "sha256": "42f79e8bea4e55f60ff202617c82527bae17eec9a2575d57833fe510634d360d",
+      "filename": "jpeg-turbo--3.1.4.1.arm64_sonoma.bottle.tar.gz"
     },
     "libpng": {
-      "version": "1.6.55",
-      "sha256": "18e55305589da2de3f27d7162aa331bcaf020e3f50d1310fe14d4539d3d90281",
-      "filename": "268f8f67b5ee27770e4e234a96b2ea90b2a011d94efde24da379029e71060824--libpng--1.6.55.arm64_tahoe.bottle.tar.gz"
+      "version": "1.6.58",
+      "sha256": "fd6cbd5d7a231b83e359fd96231bb3dd668124ab5c2009697dee906ace98fadd",
+      "filename": "libpng--1.6.58.arm64_sonoma.bottle.tar.gz"
     },
     "libslirp": {
-      "version": "4.9.1",
-      "sha256": "18d81f7392c77441d299e5ea36b08c85553919f407fb5433fb009c032a099b39",
-      "filename": "a7a9a54ccf6b36b90c415e2e0bb333e4cf8ca49c8f270b2edccd9d0bad0545e3--libslirp--4.9.1.arm64_tahoe.bottle.tar.gz"
+      "version": "4.9.3",
+      "sha256": "47aab98796ed9b099ca36bd7a1fad214ba4021ed79075efa31843969ee1a0ed0",
+      "filename": "libslirp--4.9.3.arm64_sonoma.bottle.tar.gz"
     },
     "libssh": {
       "version": "0.12.0_1",
-      "sha256": "cfbd08103692e8ffbb2cf33596a8b1f40dea83dba35621732994c921dc50e338",
-      "filename": "bdeee8eb87dbd6ad8c6dfa73948d39ce6975de8cb30a70bdef28ba5e5843f418--libssh--0.12.0_1.arm64_tahoe.bottle.tar.gz"
+      "sha256": "28078e9854ab58dbedd7f8d9391cb28869932c73907c54a9c00612af2bc689eb",
+      "filename": "libssh--0.12.0_1.arm64_sonoma.bottle.tar.gz"
     },
     "libusb": {
-      "version": "1.0.29",
-      "sha256": "b7e94047913739bcf330be575aa4a6f09f4008ffc7c6289fd7f52a0af8ca55f2",
-      "filename": "3f6ddfd7a9d45d448b86deb5854cd4d3af19239c74764ae28ff060c9f4236c8b--libusb--1.0.29.arm64_tahoe.bottle.tar.gz"
+      "version": "1.0.30",
+      "sha256": "74fa9ed0291e2d3e7827a06ea836a57c96d8861a7079544d47be231f08eb4c02",
+      "filename": "libusb--1.0.30.arm64_sonoma.bottle.tar.gz"
     },
     "lzo": {
       "version": "2.10",
-      "sha256": "9863be33af38858d028657bdfbceaff00465b23a9857ce6ed93e2ad24f6adbd8",
-      "filename": "025d7e985e52f7dcb0087a6c6b9c59543d07bc03a518d50f52b29f2951f2e52b--lzo--2.10.arm64_tahoe.bottle.tar.gz"
+      "sha256": "167749edd2052e4c577f27c79a41eb1cb4b79302b1e4bef1e4cfb29bd50aedd9",
+      "filename": "lzo--2.10.arm64_sonoma.bottle.tar.gz"
     },
     "ncurses": {
       "version": "6.6",
-      "sha256": "b43443ba3c3c8728e79413c7c3fed4a0eb293bd77c8492c1ec4c5d05233a97f1",
-      "filename": "a08d225dcc4c4a95f22852f9cacd29ba11dcca1aec53bb1550fbdbaed251bd82--ncurses--6.6.arm64_tahoe.bottle.tar.gz"
+      "sha256": "d4df00300346955c4703c7deecd3affca58a0a27477087d6ff387beb30a3ac9f",
+      "filename": "ncurses--6.6.arm64_sonoma.bottle.tar.gz"
     },
     "pixman": {
       "version": "0.46.4",
-      "sha256": "2b011051909d7f9ad432a76d32c0490f796ad545f7acbd6445356024f0c712e5",
-      "filename": "efbf223c2c1f08ded27bd5d1650dd19bb683ee7009b20a4b77fdd5cc94663cb8--pixman--0.46.4.arm64_tahoe.bottle.1.tar.gz"
+      "sha256": "13dbd43835c979d6857f9b0e29a9eba81fadc0804f11cad392fb344f27a71f9b",
+      "filename": "pixman--0.46.4.arm64_sonoma.bottle.tar.gz"
     },
     "snappy": {
       "version": "1.2.2",
-      "sha256": "e735754860a1b086bf31814117dff6eaee6a1d9f26e8de33ee9d75f1decc770b",
-      "filename": "71f7f1953a0e9fdd65c8a776126be54e067eb13dbe499acce5ce4c18a3bb08a7--snappy--1.2.2.arm64_tahoe.bottle.tar.gz"
+      "sha256": "28b0702ed678a35c6d03cb4d91f975e17b3b5af7480418f3c82f46365e55533d",
+      "filename": "snappy--1.2.2.arm64_sonoma.bottle.tar.gz"
     },
     "vde": {
       "version": "2.3.3",
-      "sha256": "7d38316ce1948eb727d590d88e81fb5c74f2ae4f0dcd9b7161266a4af1ff2e3b",
-      "filename": "4c5187c89a9007dc4ef0232d3ead6ce90d40305aac2158976e2919fda63ca18d--vde--2.3.3.arm64_tahoe.bottle.tar.gz"
+      "sha256": "3d2231810ad7229ba6a68178d648ab1f13bdfe50b214cb2d299d644d66e03762",
+      "filename": "vde--2.3.3.arm64_sonoma.bottle.tar.gz"
     },
     "zstd": {
       "version": "1.5.7_1",
-      "sha256": "628a4ef53428d0078e3d76d297171ce8d0294f5ec1de3f20305e08c4dd333565",
-      "filename": "f928de14b07b68a3feb9db75ed575d425a77054b4e1aa0a74777dff33f30b516--zstd--1.5.7_1.arm64_tahoe.bottle.tar.gz"
+      "sha256": "35b5150b27512a94ebaee7b4399aaa8adf42d247e6968319e4aeac3c05365281",
+      "filename": "zstd--1.5.7_1.arm64_sonoma.bottle.tar.gz"
     },
     "pcre2": {
       "version": "10.47_1",
-      "sha256": "948b00bdaf75a842341f08a949ca3d414ae5333df2c305a7e371be31a2c30963",
-      "filename": "9656c6af5605e24ae9c49a1d6f244dd9af2046f15d3eb4c8f01c0a9f69a902a2--pcre2--10.47_1.arm64_tahoe.bottle.tar.gz"
+      "sha256": "f6d184fa59de4ca2f3115cb661f113c6c25ced2247b4e169dd99389c0d58be3f",
+      "filename": "pcre2--10.47_1.arm64_sonoma.bottle.tar.gz"
     },
     "gettext": {
       "version": "1.0",
-      "sha256": "1f98400343132c8e469ed475157f8f4d0f516ea86bd4600552e8b75ab638fcf9",
-      "filename": "aac3829dfccbfa0e8c16d870bb99883f5db13821065fa71ec73a50ff8211ff05--gettext--1.0.arm64_tahoe.bottle.tar.gz"
+      "sha256": "f9ea4eed738746ea4150a4f83e8dd11ca21ca3de5bb113995c25eec409bb5749",
+      "filename": "gettext--1.0.arm64_sonoma.bottle.tar.gz"
     },
     "nettle": {
-      "version": "3.10.2",
-      "sha256": "f433c0830169086cae47237fc4fe4b8c71021ec9683006db96e066ff0b883030",
-      "filename": "0cd70123988e0bd55a1d84c1b76adfd589bc24434b6fb9877f72e3e624458fc9--nettle--3.10.2.arm64_tahoe.bottle.tar.gz"
+      "version": "4.0",
+      "sha256": "ffcf86d94ce0ee31890cfc5e2debfba3f4ab9125a507ff21cfa557acac70087e",
+      "filename": "nettle--4.0.arm64_sonoma.bottle.tar.gz"
     },
     "libtasn1": {
       "version": "4.21.0",
-      "sha256": "ae01713eec0bd922b903ed2bf514dc085ec3108636c4ead84614b23a2c33f267",
-      "filename": "79164fbce73aeec582df8baf70c42f16b69eff0de51b9c1ace72b212e9f0d0b1--libtasn1--4.21.0.arm64_tahoe.bottle.tar.gz"
+      "sha256": "2dceab4bf93738bd4f3efd9063a5cf60ccd96e5b0e5a3ac9fca508e42b5f3336",
+      "filename": "libtasn1--4.21.0.arm64_sonoma.bottle.tar.gz"
     },
     "libunistring": {
       "version": "1.4.2",
-      "sha256": "bae6d6d8dffc573c039a850a96e36f1b7fd846abd9ccada8260b7e888b5a3646",
-      "filename": "14e26c0c7f6816b00007b8ecd9d2278ffb93ea8925a4cbb6be6149a7fe3bc97f--libunistring--1.4.2.arm64_tahoe.bottle.tar.gz"
+      "sha256": "dc4d4b4406a2c7032dd838ae362ecaeba114d8ac9d9daaa18f760d1d71ba3577",
+      "filename": "libunistring--1.4.2.arm64_sonoma.bottle.tar.gz"
     },
     "p11-kit": {
       "version": "0.26.2",
-      "sha256": "c814d01363bc8e35892432f19074e507d16b1bce3f88635478969050250079ba",
-      "filename": "9939f88c3dd55337662879667cd41aae13e1f33b459f030e3dcf332c008dd04d--p11-kit--0.26.2.arm64_tahoe.bottle.tar.gz"
+      "sha256": "bee65fbab57c03c46620379593e7bc4865cce0bf2db794cf22bdfcc1eb564979",
+      "filename": "p11-kit--0.26.2.arm64_sonoma.bottle.tar.gz"
     },
     "ca-certificates": {
-      "version": "2025-12-02",
-      "sha256": "7e5322e973b9d34d60db5d33ed54f12c8b1867d84a55b00232d9a78d2d4eb79a",
-      "filename": "137ca17f7f557d0da5d0de8460a90ce77130af138ef624be45a5ff4244a32c26--ca-certificates--2025-12-02.all.bottle.1.tar.gz"
+      "version": "2026-05-14",
+      "sha256": "be025e23565f2d7e012185e26fe716eaefa792a0e80b3fc34e4e10e966e89cd4",
+      "filename": "ca-certificates--2026-05-14.all.bottle.tar.gz"
     },
     "gmp": {
       "version": "6.3.0",
-      "sha256": "db8075f389ca0a9f9aba54762c93760db66ef92ee989f4a32b5e13b4b987339c",
-      "filename": "c96163af1aa7d62597204f4967c5551a5f5854ec689c8fd519cee6a7ab7bce83--gmp--6.3.0.arm64_tahoe.bottle.tar.gz"
+      "sha256": "78e4f40cba6419cf7e2d81e9c945d1e93744511bd5230bdfac1b69ed894914b4",
+      "filename": "gmp--6.3.0.arm64_sonoma.bottle.tar.gz"
     },
     "openssl@3": {
-      "version": "3.6.1",
-      "sha256": "05e0b1eb559e584381c881f2bf38e57fc2c1a2603f15937961a3359d8dfd6872",
-      "filename": "0978c845896b879baa4bd050c6138ca38cd63d4c4d8a100e969b8a9a701f70b8--openssl@3--3.6.1.arm64_tahoe.bottle.tar.gz"
+      "version": "3.6.2",
+      "sha256": "aaa5f4f3d87868ecd5f5fd6967da0c305eb335a58171faba193e9c7e39fbf35c",
+      "filename": "openssl@3--3.6.2.arm64_sonoma.bottle.tar.gz"
     },
     "libidn2": {
       "version": "2.3.8",
-      "sha256": "f8f1b459f15a4ac11d2dce786a9140509782227b7d499cbdf3a1279dd325d90b",
-      "filename": "e3152b321291cc014dcc926ffc29426fd185b4dec8f9dd11f3f45ed05a69612c--libidn2--2.3.8.arm64_tahoe.bottle.tar.gz"
+      "sha256": "6c578e128c82759e211298ae9b004c83844c2626c074f5cf4950402399bdb8f1",
+      "filename": "libidn2--2.3.8.arm64_sonoma.bottle.tar.gz"
     },
     "unbound": {
-      "version": "1.24.2",
-      "sha256": "6c59b63075d8b30aa313d5b24a81e3654201c757b62a59605a7985372e88c210",
-      "filename": "50b0866f37b941cca033b2fc1921b2b9e49886fa19202d60ab22326484c5850e--unbound--1.24.2.arm64_tahoe.bottle.tar.gz"
+      "version": "1.25.1",
+      "sha256": "a72e00a0af995e8c5cf003f241fa70e616dfbd3613439e9c37d409fc847d0d95",
+      "filename": "unbound--1.25.1.arm64_sonoma.bottle.tar.gz"
     },
     "libevent": {
       "version": "2.1.12_1",
-      "sha256": "c442ba9d640780f91257a853002b25840439b9c6b1c568864111901b760d328e",
-      "filename": "2958f40d9459625c5874dd234976ec0191b1d15757b8884f2be9b57973ebcbab--libevent--2.1.12_1.arm64_tahoe.bottle.tar.gz"
+      "sha256": "38a3eb3510a7e0cd4096e4592d0095c562eb1bbad572d951f1923009a14ad702",
+      "filename": "libevent--2.1.12_1.arm64_sonoma.bottle.tar.gz"
     },
     "libnghttp2": {
-      "version": "1.68.0",
-      "sha256": "52867bf3affcb7431ad4c5d10071cb184090819fe54ed7e0d000fb3df35ffda8",
-      "filename": "470155c00ece61e600e202f83bdbc1968744836ab232e7db147562f3ba601d70--libnghttp2--1.68.0.arm64_tahoe.bottle.tar.gz"
+      "version": "1.69.0",
+      "sha256": "7c91aa8b8bb0180724f4de4020d45d9a02e7cd6cffd8429d2c33ea8b885533a2",
+      "filename": "libnghttp2--1.69.0.arm64_sonoma.bottle.tar.gz"
     }
   }
 }
