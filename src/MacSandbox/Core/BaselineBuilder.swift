@@ -1,9 +1,9 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //
 // Copyright (C) 2026 Nam Jung Hyun (rkttu) <rkttu.official@gmail.com>
 //
 // This file is part of MacSandbox, which is dual-licensed:
-//   (1) under the GNU General Public License v3.0 or later (see LICENSE), or
+//   (1) under the GNU Affero General Public License v3.0 or later (see LICENSE), or
 //   (2) under a commercial license (see COMMERCIAL-LICENSE.md).
 // You may use this file under the terms of either license.
 //
@@ -31,10 +31,11 @@ final class BaselineBuilder: ObservableObject {
 
     @Published private(set) var phase: BuildPhase = .idle
     @Published private(set) var detail: String = ""
-    @Published private(set) var log: String = ""
     @Published private(set) var isRunning = false
     /// 설치가 진행 중일 때의 인터랙티브 콘솔(화면 + 키보드/마우스 개입). 유휴 시 nil.
     @Published var console: VMConsole?
+    /// 로그는 별도 스로틀링 스토어 — 빌더를 관찰하는 뷰가 로그 줄마다 재렌더되지 않게 분리.
+    let logBuffer = LogBuffer()
 
     /// 로그가 추가될 때마다 호출 (헤드리스/CLI에서 stdout 출력용)
     var logHandler: ((String) -> Void)?
@@ -60,14 +61,26 @@ final class BaselineBuilder: ObservableObject {
     func build(config: InstallConfig, headless: Bool = false) async {
         guard !isRunning else { return }
         isRunning = true
-        log = ""
+        logBuffer.clear()
         defer { isRunning = false }
+
+        // 백그라운드 단계(미디어 빌드/다운로드)가 메인 액터로 로그를 넘기는 공용 싱크.
+        let logSink: @Sendable (String) -> Void = { [weak self] msg in
+            Task { @MainActor in self?.appendLog(msg) }
+        }
 
         do {
             try SandboxPaths.ensureBaseDirectories()
 
+            // 0. 사전 점검 — 늦게(설치 수십 분 후) 터질 실패를 앞당겨 명확히 알린다.
+            //    배포 중 qcow2 실사용이 10~20GB까지 커지고 부트디스크 1.3GB + virtio ISO 0.7GB가 추가된다.
+            try checkFreeDiskSpace(minimumBytes: 24_000_000_000)
+            guard FileManager.default.isReadableFile(atPath: config.isoPath) else {
+                throw BuildError.installFailed("ISO is not readable: \(config.isoPath)")
+            }
+
             // 1. 베이스라인 디렉토리 초기화 (단일 베이스라인 정책: 기존 교체)
-            updatePhase(.preparingDisk, "기존 베이스라인 정리...")
+            updatePhase(.preparingDisk, L("build.detail.cleanup"))
             let baselineDir = SandboxPaths.baselineDir
             if FileManager.default.fileExists(atPath: baselineDir.path) {
                 try FileManager.default.removeItem(at: baselineDir)
@@ -88,39 +101,45 @@ final class BaselineBuilder: ObservableObject {
             )
             try saveMetadata(meta)
 
-            // 2. qcow2 NVMe 타깃 디스크 생성
-            updatePhase(.preparingDisk, "\(config.diskSizeGB)GB qcow2 디스크 생성...")
-            try disk.createQcow2(at: diskPath, sizeGB: config.diskSizeGB)
-            appendLog("디스크 생성 완료: \(diskPath)")
+            // 2. qcow2 NVMe 타깃 디스크 생성 (qemu-img 프로세스 — 메인 스레드 밖에서)
+            updatePhase(.preparingDisk, L("build.detail.disk", config.diskSizeGB))
+            let diskService = disk
+            try await Task.detached(priority: .userInitiated) {
+                try diskService.createQcow2(at: diskPath, sizeGB: config.diskSizeGB)
+            }.value
+            appendLog("Disk created: \(diskPath)")
 
             // 3. UEFI 펌웨어 확인
-            updatePhase(.preparingFirmware, "UEFI 펌웨어 확인...")
+            updatePhase(.preparingFirmware, L("build.detail.firmware"))
             guard let efiCode = SandboxPaths.edk2CodeFirmware(),
                   let varsTemplate = SandboxPaths.edk2VarsTemplate() else {
                 throw QEMURuntime.RuntimeError.firmwareNotFound
             }
 
             // 4. WinPE DISM 배포 매체 생성 (GPT FAT32 부트디스크 — boot.wim 편집)
-            updatePhase(.generatingUnattend, "WinPE 배포 매체 생성 (boot.wim 편집 + GPT 디스크)...")
+            //    hdiutil/wimlib/diskutil 동기 작업으로 수 분 걸린다 — 메인 스레드를 막으면
+            //    런루프 정지(IMK mach port 오류·응답 없음)로 이어지므로 반드시 백그라운드에서.
+            updatePhase(.generatingUnattend, L("build.detail.media"))
             let bootDisk = baselineDir.appendingPathComponent("wpe-boot.img").path
-            let pantherXML = unattend.generatePantherXML(config: config)
-            try WinPEDeployMediaBuilder.build(
-                .init(isoPath: config.isoPath, imageEdition: config.imageEdition,
-                      pantherUnattendXML: pantherXML, bootDiskPath: bootDisk),
-                onLog: { [weak self] msg in Task { @MainActor in self?.appendLog(msg) } }
-            )
-            appendLog("배포 매체: \(bootDisk)")
+            let mediaInputs = WinPEDeployMediaBuilder.Inputs(
+                isoPath: config.isoPath, imageEdition: config.imageEdition,
+                pantherUnattendXML: unattend.generatePantherXML(config: config),
+                bootDiskPath: bootDisk)
+            try await Task.detached(priority: .userInitiated) {
+                try WinPEDeployMediaBuilder.build(mediaInputs, onLog: logSink)
+            }.value
+            appendLog("Deployment media: \(bootDisk)")
 
             let serialLog = headless ? baselineDir.appendingPathComponent("uefi-serial.log").path : nil
 
-            // 4.5 virtio-win 드라이버 ISO 확보 (네트워킹/vGPU 등 virtio 장치 동작 + RDP 전제)
-            updatePhase(.generatingUnattend, "virtio-win 드라이버 준비...")
-            let virtioISO = try GuestDrivers.ensureVirtioWinISO { [weak self] msg in
-                Task { @MainActor in self?.appendLog(msg) }
-            }
+            // 4.5 virtio-win 드라이버 ISO 확보 — 캐시 없으면 ~700MB 다운로드(역시 백그라운드).
+            updatePhase(.generatingUnattend, L("build.detail.drivers"))
+            let virtioISO = try await Task.detached(priority: .userInitiated) {
+                try GuestDrivers.ensureVirtioWinISO(onLog: logSink)
+            }.value
 
             // 5. Phase 1 — WinPE 배포 (프롬프트·키 입력 0, 완전 결정론적)
-            updatePhase(.installing, "Phase 1/2: WinPE에서 Windows 배포 중 (DISM /Apply-Image)...")
+            updatePhase(.installing, L("build.detail.phase1"))
             let efiVarsDeploy = baselineDir.appendingPathComponent("efi-vars-deploy.fd").path
             try FileManager.default.copyItem(atPath: varsTemplate.path, toPath: efiVarsDeploy)
             let deployExit = try await runPhase(name: "deploy", headless: headless) { sock in
@@ -131,16 +150,16 @@ final class BaselineBuilder: ObservableObject {
                     qmpSocketPath: sock, serialLogPath: serialLog)
             }
             guard deployExit == 0 else {
-                throw BuildError.installFailed("배포 단계가 비정상 종료했습니다 (exit=\(deployExit)).")
+                throw BuildError.installFailed("Deploy phase exited abnormally (exit=\(deployExit)).")
             }
             let deployedSize = ((try? FileManager.default.attributesOfItem(atPath: diskPath))?[.size] as? Int64) ?? 0
-            appendLog("배포 후 디스크: \(deployedSize / 1_000_000)MB")
+            appendLog("Disk after deploy: \(deployedSize / 1_000_000)MB")
             guard deployedSize >= 3_000_000_000 else {
-                throw BuildError.installFailed("배포 후 디스크가 \(deployedSize / 1_000_000)MB로 너무 작습니다 — DISM 적용 실패 가능.")
+                throw BuildError.installFailed("Disk after deploy is only \(deployedSize / 1_000_000)MB — DISM apply may have failed.")
             }
 
             // 6. Phase 2 — 첫 부팅 구성 (specialize/oobe → 첫 로그온 후 shutdown)
-            updatePhase(.installing, "Phase 2/2: Windows 첫 부팅 구성 중 (OOBE)...")
+            updatePhase(.installing, L("build.detail.phase2"))
             let efiVarsOobe = SandboxPaths.baselineEfiVarsPath.path
             if FileManager.default.fileExists(atPath: efiVarsOobe) { try FileManager.default.removeItem(atPath: efiVarsOobe) }
             try FileManager.default.copyItem(atPath: varsTemplate.path, toPath: efiVarsOobe)
@@ -151,24 +170,24 @@ final class BaselineBuilder: ObservableObject {
                     qmpSocketPath: sock, serialLogPath: serialLog)
             }
             guard oobeExit == 0 else {
-                throw BuildError.installFailed("OOBE 단계가 비정상 종료했습니다 (exit=\(oobeExit)).")
+                throw BuildError.installFailed("OOBE phase exited abnormally (exit=\(oobeExit)).")
             }
 
             // 7. 마무리
-            updatePhase(.finalizing, "베이스라인 마무리...")
+            updatePhase(.finalizing, L("build.detail.finalize"))
             try? FileManager.default.removeItem(atPath: bootDisk)
             try? FileManager.default.removeItem(atPath: efiVarsDeploy)
             meta.status = .ready
             meta.createdAt = Date()
             try saveMetadata(meta)
 
-            updatePhase(.completed, "베이스라인 생성 완료!")
-            appendLog("✅ 베이스라인 생성 완료 (완전 결정론적 WinPE DISM 배포)")
+            updatePhase(.completed, L("build.detail.done"))
+            appendLog("✅ Baseline created (fully deterministic WinPE DISM deployment)")
         } catch {
             console?.stop()
             console = nil
             updatePhase(.failed(error.localizedDescription), error.localizedDescription)
-            appendLog("❌ 실패: \(error.localizedDescription)")
+            appendLog("❌ Failed: \(error.localizedDescription)")
             if var meta = currentBaseline() {
                 meta.status = .error
                 try? saveMetadata(meta)
@@ -178,7 +197,7 @@ final class BaselineBuilder: ObservableObject {
 
     func cancel() {
         runtime.forceStop()
-        appendLog("사용자 취소 — VM 종료 요청")
+        appendLog("Cancelled by user — VM stop requested")
     }
 
     // MARK: - Private
@@ -189,7 +208,7 @@ final class BaselineBuilder: ObservableObject {
                           argsBuilder: (String) -> [String]) async throws -> Int32 {
         let qmpSocket = "/tmp/msbx-\(UUID().uuidString.prefix(8)).sock"
         let args = argsBuilder(qmpSocket)
-        appendLog("[\(name)] QEMU 시작")
+        appendLog("[\(name)] QEMU started")
         let console = VMConsole(socketPath: qmpSocket, capturesFrames: !headless)
         self.console = console
         console.start()
@@ -200,13 +219,25 @@ final class BaselineBuilder: ObservableObject {
         }
         console.stop()
         self.console = nil
-        appendLog("[\(name)] QEMU 종료 (exit=\(exit))")
+        appendLog("[\(name)] QEMU exited (exit=\(exit))")
         return exit
     }
 
     private func updatePhase(_ phase: BuildPhase, _ detail: String) {
         self.phase = phase
         self.detail = detail
+    }
+
+    /// 베이스라인 저장 볼륨의 여유 공간 점검(측정 실패 시 통과 — 설치 단계에서 자연 실패).
+    private func checkFreeDiskSpace(minimumBytes: Int64) throws {
+        let values = try? URL(fileURLWithPath: NSHomeDirectory())
+            .resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
+        guard let free = values?.volumeAvailableCapacityForImportantUsage else { return }
+        if free < minimumBytes {
+            let fmt = ByteCountFormatter()
+            throw BuildError.installFailed(L("error.lowDiskSpace",
+                fmt.string(fromByteCount: free), fmt.string(fromByteCount: minimumBytes)))
+        }
     }
 
     private func saveMetadata(_ meta: BaselineMetadata) throws {
@@ -219,7 +250,7 @@ final class BaselineBuilder: ObservableObject {
     private func appendLog(_ message: String) {
         let trimmed = message.trimmingCharacters(in: .newlines)
         guard !trimmed.isEmpty else { return }
-        log += trimmed + "\n"
+        logBuffer.append(trimmed)
         logHandler?(trimmed)
     }
 }

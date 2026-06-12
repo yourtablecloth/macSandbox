@@ -1,9 +1,9 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //
 // Copyright (C) 2026 Nam Jung Hyun (rkttu) <rkttu.official@gmail.com>
 //
 // This file is part of MacSandbox, which is dual-licensed:
-//   (1) under the GNU General Public License v3.0 or later (see LICENSE), or
+//   (1) under the GNU Affero General Public License v3.0 or later (see LICENSE), or
 //   (2) under a commercial license (see COMMERCIAL-LICENSE.md).
 // You may use this file under the terms of either license.
 //
@@ -32,10 +32,10 @@ enum WinPEDeployMediaBuilder {
         case parseFailed(String)
         var errorDescription: String? {
             switch self {
-            case .toolNotFound(let t): return "필수 도구를 찾을 수 없습니다: \(t)"
-            case .isoMountFailed(let m): return "ISO 마운트 실패: \(m)"
-            case .commandFailed(let m): return "명령 실패: \(m)"
-            case .parseFailed(let m): return "출력 파싱 실패: \(m)"
+            case .toolNotFound(let t): return "Required tool not found: \(t)"
+            case .isoMountFailed(let m): return "ISO mount failed: \(m)"
+            case .commandFailed(let m): return "Command failed: \(m)"
+            case .parseFailed(let m): return "Output parse failed: \(m)"
             }
         }
     }
@@ -60,7 +60,7 @@ enum WinPEDeployMediaBuilder {
         defer { try? fm.removeItem(at: work) }
 
         // 1) ISO 마운트
-        onLog("ISO 마운트 중...")
+        onLog("Mounting ISO...")
         let mountPoint = try mountISO(inputs.isoPath)
         var isoDetached = false
         func detachISO() { if !isoDetached { _ = try? runCapture("/usr/bin/hdiutil", ["detach", mountPoint]); isoDetached = true } }
@@ -73,16 +73,16 @@ enum WinPEDeployMediaBuilder {
         let isoFonts = (mountPoint as NSString).appendingPathComponent("efi/microsoft/boot/fonts")
 
         // 2) 범용 bootmgfw.efi 추출 (ISO의 \efi\boot\bootaa64.efi는 cdboot라 디스크 부팅 불가)
-        onLog("bootmgfw.efi 추출 중...")
+        onLog("Extracting bootmgfw.efi...")
         try run(wimlib.path, ["extract", installWim, "2", "/Windows/Boot/EFI/bootmgfw.efi",
                               "--dest-dir=\(work.path)", "--no-acls"])
         let bootmgfw = work.appendingPathComponent("bootmgfw.efi").path
         guard fm.fileExists(atPath: bootmgfw) else {
-            throw DeployMediaError.commandFailed("bootmgfw.efi 추출 결과 없음")
+            throw DeployMediaError.commandFailed("bootmgfw.efi extraction produced no output")
         }
 
         // 3) boot.wim 복사 + 편집 (image 2: winpeshl.ini → deploy.cmd)
-        onLog("WinPE(boot.wim) 편집 중...")
+        onLog("Editing WinPE (boot.wim)...")
         let editedWim = work.appendingPathComponent("boot.wim").path
         try fm.copyItem(atPath: isoBootWim, toPath: editedWim)
         try? fm.setAttributes([.posixPermissions: 0o644], ofItemAtPath: editedWim)
@@ -105,7 +105,7 @@ enum WinPEDeployMediaBuilder {
         try runWithStdin(wimlib.path, ["update", editedWim, "2"], stdin: updateCommands)
 
         // 4) GPT FAT32 디스크 생성
-        onLog("GPT FAT32 부트 디스크 생성 중...")
+        onLog("Creating GPT FAT32 boot disk...")
         try createBlankImage(at: inputs.bootDiskPath, sizeMB: 1300)
         let dev = try attachRawNoMount(inputs.bootDiskPath)
         var detached = false
@@ -118,7 +118,7 @@ enum WinPEDeployMediaBuilder {
         let mp = try mountPointOf(part)
 
         // 5) 부트 파일 복사
-        onLog("부트 파일 복사 중...")
+        onLog("Copying boot files...")
         let fmCopy: (String, String) throws -> Void = { src, dstRel in
             let dst = (mp as NSString).appendingPathComponent(dstRel)
             try fm.createDirectory(atPath: (dst as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
@@ -143,7 +143,7 @@ enum WinPEDeployMediaBuilder {
         _ = try? runCapture("/usr/sbin/diskutil", ["unmount", part])
         detachDisk()
         detachISO()
-        onLog("배포 부트 디스크 준비 완료")
+        onLog("Deployment boot disk ready")
     }
 
     /// ISO 안 install.wim의 설치 가능한 에디션(이미지 Name) 목록을 반환한다.
@@ -167,7 +167,28 @@ enum WinPEDeployMediaBuilder {
 
     // MARK: - 스크립트 생성
 
+    /// 제거할 기본 제공(프로비저닝) 앱 키워드 — 게임/미디어/프로모션류.
+    /// findstr /i의 공백 구분 OR 매칭으로 PackageName 부분일치 제거. 핵심 앱(Store,
+    /// DesktopAppInstaller, Photos, Paint, SnippingTool, Calculator, Notepad, Terminal)은 보존.
+    static let removeAppxKeywords = [
+        "Clipchamp",                  // 영상 편집기
+        "SolitaireCollection",        // 카드 게임
+        "GamingApp", "Xbox",          // Xbox 앱/오버레이/ID 공급자 일체
+        "ZuneMusic", "ZuneVideo",     // 미디어 플레이어 / 영화 및 TV
+        "BingNews", "BingWeather",    // 뉴스/날씨
+        "Teams", "MSTeams",           // Teams 소비자용
+        "OfficeHub",                  // Office 프로모션
+        "OutlookForWindows",          // 새 Outlook(프로모션 설치)
+        "FeedbackHub", "GetHelp", "Getstarted",  // 피드백/도움말/팁
+        "Todos", "People", "YourPhone",          // To Do/연락처/휴대폰 연결
+        "PowerAutomateDesktop", "DevHome", "QuickAssist",
+        "SoundRecorder", "WindowsCamera",        // 녹음기/카메라
+        "windowscommunicationsapps",             // 구 메일/캘린더
+        "549981C3F5F10",                         // Cortana(구버전 잔재)
+    ]
+
     static func deployCmdContent(imageEdition: String) -> String {
+        let removeFilter = removeAppxKeywords.joined(separator: " ")
         // CRLF 줄바꿈
         let lines = [
             "@echo off",
@@ -180,6 +201,16 @@ enum WinPEDeployMediaBuilder {
             "set VIRT=",
             "for %%d in (C D E F G H I J K) do if exist %%d:\\NetKVM set VIRT=%%d:",
             "if defined VIRT echo [virtio-win=%VIRT%] & dism /Image:W:\\ /Add-Driver /Driver:%VIRT%\\ /Recurse /ForceUnsigned",
+            // 오프라인 정책: Edge 최초 실행 경험(FRE) 비활성화 — SOFTWARE 하이브를 로드해
+            // HKLM\...\Policies\Microsoft\Edge!HideFirstRunExperience=1 주입(결정론적, 부팅 전 적용).
+            "echo === Edge first-run policy ===",
+            "reg load HKLM\\MSBXSOFT W:\\Windows\\System32\\config\\SOFTWARE",
+            "reg add HKLM\\MSBXSOFT\\Policies\\Microsoft\\Edge /v HideFirstRunExperience /t REG_DWORD /d 1 /f",
+            "reg unload HKLM\\MSBXSOFT || (ping -n 3 127.0.0.1 >nul & reg unload HKLM\\MSBXSOFT)",
+            // 기본 제공 불필요 앱 제거(오프라인 프로비저닝 해제) — 게임/미디어/프로모션류.
+            // 첫 로그온 전에 제거하므로 사용자 프로필에 설치 자체가 안 된다(빠르고 결정론적).
+            "echo === Remove provisioned inbox apps ===",
+            "for /f \"tokens=3\" %%P in ('dism /English /Image:W:\\ /Get-ProvisionedAppxPackages ^| findstr /b /c:\"PackageName\" ^| findstr /i \"\(removeFilter)\"') do dism /Image:W:\\ /Remove-ProvisionedAppxPackage /PackageName:%%P",
             "md W:\\Windows\\Panther",
             "copy /Y X:\\unattend.xml W:\\Windows\\Panther\\unattend.xml",
             "bcdboot W:\\Windows /s S: /f UEFI",
@@ -244,7 +275,7 @@ enum WinPEDeployMediaBuilder {
         let fm = FileManager.default
         if fm.fileExists(atPath: path) { try fm.removeItem(atPath: path) }
         guard fm.createFile(atPath: path, contents: nil) else {
-            throw DeployMediaError.commandFailed("이미지 생성 실패: \(path)")
+            throw DeployMediaError.commandFailed("Image creation failed: \(path)")
         }
         let handle = try FileHandle(forWritingTo: URL(fileURLWithPath: path))
         try handle.truncate(atOffset: UInt64(sizeMB) * 1024 * 1024)
