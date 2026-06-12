@@ -1,6 +1,7 @@
-# MacSandbox 아키텍처
+# macSandbox for Windows 아키텍처
 
-macOS(Apple Silicon)에서 Windows 11 ARM64 일회용 샌드박스를 만드는 앱.
+macOS(Apple Silicon)에서 Windows 11 ARM64 일회용 샌드박스를 만드는 앱
+(브랜드: **macSandbox for Windows**, 내부 모듈/실행 파일 이름은 `MacSandbox` 유지).
 **런타임은 QEMU + Hypervisor.framework(HVF)** 이고, 베이스라인 이미지는
 **WinPE 기반 DISM 오프라인 배포**로 완전 자동·결정론적으로 구축한다.
 
@@ -21,7 +22,7 @@ setup.exe + autounattend 방식은 "Press any key to boot from CD"(El Torito) �
 대화형 화면 때문에 키 입력 휴리스틱이 필요했다. 이를 **DISM 오프라인 배포**로 대체해
 **El Torito 프롬프트·키 입력·setup.exe GUI를 모두 제거**했다.
 
-### 배포 매체 ([WinPEDeployMediaBuilder](../src/MacSandbox/Core/WinPEDeployMediaBuilder.swift))
+### 배포 매체 ([WinPEDeployMediaBuilder](src/MacSandbox/Core/WinPEDeployMediaBuilder.swift))
 
 사용자 ISO로부터 **GPT 파티션 FAT32 부트 디스크**를 만든다:
 
@@ -42,14 +43,14 @@ setup.exe + autounattend 방식은 "Press any key to boot from CD"(El Torito) �
   `bcdboot W:\Windows /s S: /f UEFI` → `bootmgfw.efi`를 ESP의 `\EFI\BOOT\BOOTAA64.EFI`로 복사 → `wpeutil shutdown`
 - `msbx-dp.txt`(diskpart 스크립트), `unattend.xml`(Panther)
 
-### virtio-win 드라이버 주입 ([GuestDrivers](../src/MacSandbox/Core/GuestDrivers.swift))
+### virtio-win 드라이버 주입 ([GuestDrivers](src/MacSandbox/Core/GuestDrivers.swift))
 
 배포 단계에 `virtio-win.iso`(없으면 fedorapeople에서 자동 다운로드, ~750MB 캐시)를 USB cdrom으로
 추가로 물린다. `deploy.cmd`가 `\NetKVM` 마커로 ISO 드라이브를 찾아 오프라인 이미지(W:\)에
 `/Add-Driver /Recurse`로 주입한다. ARM64 인박스에 없는 **NetKVM(virtio-net)** 이 핵심 —
 이게 있어야 런타임에 RDP가 동작한다. (viostor·viogpudo·vioinput 등 ARM64 드라이버도 함께 주입.)
 
-### 2단계 오케스트레이션 ([BaselineBuilder](../src/MacSandbox/Core/BaselineBuilder.swift))
+### 2단계 오케스트레이션 ([BaselineBuilder](src/MacSandbox/Core/BaselineBuilder.swift))
 
 1. **Phase 1 (배포)**: GPT FAT 부트디스크 + Windows ISO + 빈 NVMe(`nvme`)로 부팅.
    WinPE가 프롬프트·키 0으로 떠서 `deploy.cmd` 실행 → `dism` 적용 → `bcdboot` → shutdown(QEMU exit).
@@ -62,7 +63,7 @@ setup.exe + autounattend 방식은 "Press any key to boot from CD"(El Torito) �
 > Panther unattend는 oobeSystem 패스만 쓴다. specialize에 `Microsoft-Windows-Deployment`
 > RunSynchronous를 넣으면 일부 25H2 빌드가 "응답 파일이 올바르지 않음"으로 거부한다.
 
-## 샌드박스 런타임 ([SandboxRunner](../src/MacSandbox/Core/SandboxRunner.swift) / [SandboxConfig](../src/MacSandbox/Core/SandboxConfig.swift))
+## 샌드박스 런타임 ([SandboxRunner](src/MacSandbox/Core/SandboxRunner.swift) / [SandboxConfig](src/MacSandbox/Core/SandboxConfig.swift))
 
 베이스라인 위에 일회용 환경을 띄운다(Windows Sandbox의 `.wsb`에 대응):
 
@@ -79,9 +80,9 @@ setup.exe + autounattend 방식은 "Press any key to boot from CD"(El Torito) �
 
 Windows Sandbox 자신이 내부적으로 RDP를 쓰는 것과 같은 접근. 두 경로를 병행한다:
 
-- **부팅 모니터링**: VNC 프레임버퍼 → QMP `screendump` 폴링 → 인앱 콘솔([VMConsole](../src/MacSandbox/Core/VMConsole.swift)).
+- **부팅 모니터링**: VNC 프레임버퍼 → QMP `screendump` 폴링 → 인앱 콘솔([VMConsole](src/MacSandbox/Core/VMConsole.swift)).
   화면 클릭(절대좌표)·키보드(`QKeyMap`)로 부팅 중에도 개입 가능.
-- **사용자 상호작용**: 게스트가 뜨면 **FreeRDP**(`sdl-freerdp`) 창으로 접속([RDPSession](../src/MacSandbox/Core/RDPSession.swift)).
+- **사용자 상호작용**: 게스트가 뜨면 **FreeRDP**(`sdl-freerdp`) 창으로 접속([RDPSession](src/MacSandbox/Core/RDPSession.swift)).
   폴더 공유(`/drive`)·클립보드(`+clipboard`)·마이크/오디오(`/microphone` `/sound`)·프린터(`/printer`)
   리다이렉션을 제공. (웹캠은 이 FreeRDP 빌드에 RDPECAM 채널이 없어 미지원.)
 
@@ -100,15 +101,15 @@ FreeRDP가 `WDAGUtilityAccount`/빈 암호/`/sec:tls`(서버가 plain RDP를 SSL
 
 ## UI 흐름 + 구성 입력
 
-GUI는 단일 창 라우터([ContentView](../src/MacSandbox/Views/ContentView.swift)):
+GUI는 단일 창 라우터([ContentView](src/MacSandbox/Views/ContentView.swift)):
 
-- **베이스라인 없음** → [BuildView](../src/MacSandbox/Views/ContentView.swift) (ISO + 에디션만 골라 1-round 빌드). 완료 시 자동 전환.
-- **베이스라인 있음** → 곧바로 샌드박스 시작([SandboxView](../src/MacSandbox/Views/SandboxView.swift)). 시작 버튼 없음.
+- **베이스라인 없음** → [BuildView](src/MacSandbox/Views/ContentView.swift) (ISO + 에디션만 골라 1-round 빌드). 완료 시 자동 전환.
+- **베이스라인 있음** → 곧바로 샌드박스 시작([SandboxView](src/MacSandbox/Views/SandboxView.swift)). 시작 버튼 없음.
   - **부팅 중**: "샌드박스 부팅 중" 안내 + 현재 메시지만. 콘솔/로그는 "더 보기"로 펼친다.
   - **RDP 확립**(`SandboxRunner.rdpConnected`, FreeRDP 동적 채널 로드 감지) → `NSApp.hide`로 앱 창을 숨겨 **FreeRDP 창만 남긴다**. 샌드박스 종료 시 다시 표시.
   - **종료 후**: 다시 시작 / `.wsb` 불러오기.
 
-세부 옵션은 GUI 토글이 아니라 **`.wsb` 파일/커맨드라인 스위치**로 지정한다([WSBConfig](../src/MacSandbox/Core/WSBConfig.swift) / AppLaunch). 기본값은 Windows Sandbox 표준(네트워킹·클립보드·오디오 on, 웹캠·프린터 off, ~4GB).
+세부 옵션은 GUI 토글이 아니라 **`.wsb` 파일/커맨드라인 스위치**로 지정한다([WSBConfig](src/MacSandbox/Core/WSBConfig.swift) / AppLaunch). 기본값은 Windows Sandbox 표준(네트워킹·클립보드·오디오 on, 웹캠·프린터 off, ~4GB).
 
 ## 구성 요소
 
@@ -146,4 +147,4 @@ GUI는 단일 창 라우터([ContentView](../src/MacSandbox/Views/ContentView.sw
 - 스위치/`.wsb` 미지정 시 GUI는 Windows Sandbox 표준 기본값으로 시작 화면을 띄운다.
   `.wsb`/`--folder`/`--run`이 있으면 베이스라인 준비 시 자동 시작.
 
-`.wsb`는 Windows Sandbox와 호환되는 XML이다(예: `docs/sample.wsb`). HostFolder는 macOS 경로로 해석.
+`.wsb`는 Windows Sandbox와 호환되는 XML이다(예: `examples/sample.wsb`). HostFolder는 macOS 경로로 해석.

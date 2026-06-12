@@ -1,5 +1,5 @@
 <!--
-SPDX-License-Identifier: GPL-3.0-or-later
+SPDX-License-Identifier: AGPL-3.0-or-later
 Copyright (C) 2026 Nam Jung Hyun (rkttu)
 -->
 
@@ -10,9 +10,9 @@ MacSandbox는 Microsoft **Windows Sandbox**의 `.wsb`(XML) 구성 파일 스키�
 **QEMU+HVF 가상 머신 + FreeRDP(임베드) 하이브리드**다. 따라서 일부 항목은 의미가 다르거나
 미구현이다. 이 문서는 각 `.wsb` 항목이 **실제로 무엇을 하는지/하지 않는지**를 정리한다.
 
-- 파싱·매핑: [`WSBConfig.swift`](../src/MacSandbox/Core/WSBConfig.swift) → [`SandboxConfig`](../src/MacSandbox/Core/SandboxConfig.swift)
-- 적용 시점: **매 실행(런타임)**. 장치/네트워크/디스플레이/메모리는 [`QEMURuntime`](../src/MacSandbox/Core/QEMURuntime.swift),
-  리다이렉션(클립보드·오디오)은 임베드 엔진 [`rdp_engine.c`](../src/CFreeRDP/rdp_engine.c)가 처리한다.
+- 파싱·매핑: [`WSBConfig.swift`](src/MacSandbox/Core/WSBConfig.swift) → [`SandboxConfig`](src/MacSandbox/Core/SandboxConfig.swift)
+- 적용 시점: **매 실행(런타임)**. 장치/네트워크/디스플레이/메모리는 [`QEMURuntime`](src/MacSandbox/Core/QEMURuntime.swift),
+  리다이렉션(클립보드·오디오)은 임베드 엔진 [`rdp_engine.c`](src/CFreeRDP/rdp_engine.c)가 처리한다.
 - 사용: 파일 더블클릭/연결 대신 CLI 스위치 또는 `.wsb` 경로로 지정.
 
 ## 지원 매트릭스

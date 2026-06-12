@@ -1,0 +1,6 @@
+# GitHub Pages (Jekyll) — 저장소 설정에서 Pages 소스를 "main 브랜치 / docs 폴더"로 지정.
+theme: jekyll-theme-cayman
+title: macSandbox for Windows
+description: Disposable Windows 11 ARM64 sandbox for Apple Silicon Macs
+lang: en
+show_downloads: false
