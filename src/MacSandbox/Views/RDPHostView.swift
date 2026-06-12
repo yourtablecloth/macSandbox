@@ -1,9 +1,9 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //
 // Copyright (C) 2026 Nam Jung Hyun (rkttu) <rkttu.official@gmail.com>
 //
 // This file is part of MacSandbox, which is dual-licensed:
-//   (1) under the GNU General Public License v3.0 or later (see LICENSE), or
+//   (1) under the GNU Affero General Public License v3.0 or later (see LICENSE), or
 //   (2) under a commercial license (see COMMERCIAL-LICENSE.md).
 // You may use this file under the terms of either license.
 //
@@ -40,6 +40,13 @@ struct RDPHostView: NSViewRepresentable {
         v.clipboardEnabled = clipboardEnabled   // connect 전에 설정(엔진 생성 시 반영)
         v.micEnabled = micEnabled
         v.printerEnabled = printerEnabled
+        // 옵션 대화상자 설정(다음 연결부터 반영): 오디오 재생 / HiDPI / 키보드 식별(한·영 등)
+        v.audioPlaybackEnabled = AppOptions.audioPlayback
+        v.hiDPIEnabled = AppOptions.hiDPI
+        let kb = AppOptions.keyboardLayout.rdpValues
+        if kb.type > 0 || kb.layout > 0 {
+            v.setKeyboardType(kb.type, subtype: kb.subtype, layout: kb.layout)
+        }
         for m in mounts {                        // rdpdr 드라이브명 = resolvedMounts의 driveName
             v.addMappedFolder(m.hostPath, name: m.driveName, readOnly: m.readOnly)
         }

@@ -1,9 +1,9 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //
 // Copyright (C) 2026 Nam Jung Hyun (rkttu) <rkttu.official@gmail.com>
 //
 // This file is part of MacSandbox, which is dual-licensed:
-//   (1) under the GNU General Public License v3.0 or later (see LICENSE), or
+//   (1) under the GNU Affero General Public License v3.0 or later (see LICENSE), or
 //   (2) under a commercial license (see COMMERCIAL-LICENSE.md).
 // You may use this file under the terms of either license.
 //
@@ -15,22 +15,23 @@ import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
 
-/// 라우터 — 베이스라인이 없으면 빌드 화면, 있으면 곧바로 샌드박스를 시작한다.
+/// 라우터 — 베이스라인이 없으면(또는 재구축 진입 시) 빌드 화면, 있으면 곧바로 샌드박스를 시작한다.
 /// 실행 중에는 인앱 임베드 RDP 뷰가 창을 채운다(단일 창).
 struct ContentView: View {
     @ObservedObject var runner: SandboxRunner   // 앱(App) 소유 — 메뉴 커맨드와 공유
+    @ObservedObject var admin: BaselineAdmin    // 앱(App) 소유 — 재구축/파기 메뉴와 공유
     @StateObject private var builder = BaselineBuilder()
     @State private var baselineReady = false
-    @State private var config: SandboxConfig = AppLaunch.shared.config
+    @State private var config: SandboxConfig = AppLaunch.shared.effectiveConfig()
     @State private var didAutoStart = false
     @State private var closeGuard = CloseGuard()
 
     var body: some View {
         Group {
-            if baselineReady {
-                SandboxView(runner: runner, config: $config)
+            if baselineReady && !admin.rebuildMode {
+                SandboxView(runner: runner, admin: admin, config: $config)
             } else {
-                BuildView(builder: builder)
+                BuildView(builder: builder, admin: admin, canReturnToSandbox: baselineReady)
             }
         }
         .frame(minWidth: 680, minHeight: 600)
@@ -42,7 +43,18 @@ struct ContentView: View {
             AppHooks.shared.runner = runner   // 앱/창 종료 훅이 참조
             refresh()
         }
-        .onChange(of: builder.phase) { _, p in if p == .completed { refresh() } }
+        .onChange(of: builder.phase) { _, p in
+            if p == .completed {
+                // 재구축 포함 — 빌드가 끝나면 곧바로 새 샌드박스로 진입한다.
+                admin.leaveRebuildMode()
+                didAutoStart = false
+                refresh()
+            }
+        }
+        .onChange(of: admin.rebuildMode) { _, rebuilding in
+            if !rebuilding { didAutoStart = false }
+            refresh()
+        }
         .onChange(of: runner.isRunning) { _, running in
             // 임베드 RDP 뷰는 앱 창 안에서 렌더하므로 창을 내리지 않는다. 종료 시에만 갱신.
             if !running { refresh() }
@@ -52,7 +64,11 @@ struct ContentView: View {
     /// 베이스라인이 준비돼 있으면 곧바로 샌드박스를 시작한다(최초 1회). 없으면 빌드 화면.
     private func refresh() {
         baselineReady = runner.hasBaseline()
-        if baselineReady, !didAutoStart, !runner.isRunning {
+        // 명시 구성(.wsb/CLI)이 없으면 옵션 변경이 다음 시작부터 반영되도록 매번 재산출.
+        if !runner.isRunning, AppLaunch.shared.explicitConfig == nil {
+            config = AppOptions.makeDefaultConfig()
+        }
+        if baselineReady, !admin.rebuildMode, !didAutoStart, !runner.isRunning {
             didAutoStart = true
             Task { await runner.start(config: config) }
         }
@@ -82,34 +98,60 @@ struct WindowAccessor: NSViewRepresentable {
     }
 }
 
-/// 베이스라인 자동 빌드 화면 (베이스라인이 아직 없을 때만 표시)
+/// 베이스라인 자동 빌드 화면 (베이스라인이 없거나 재구축에 진입했을 때 표시)
+///
+/// 두 가지 모드로 화면을 단순하게 유지한다:
+/// - **설정 모드**(빌드 전): ISO·에디션 선택 카드 + 빌드 버튼만.
+/// - **설치 모드**(빌드 중): 입력 폼을 숨기고 진행 카드 + 부팅 모니터 + 로그만.
+/// 빌드 시작 전에는 Windows 라이선스 확인 체크리스트 시트를 매번 표시한다.
 struct BuildView: View {
     @ObservedObject var builder: BaselineBuilder
+    @ObservedObject var admin: BaselineAdmin
+    /// true면 준비된 베이스라인이 있는 재구축 모드 — 샌드박스로 돌아가기 버튼 표시.
+    var canReturnToSandbox = false
 
     @State private var isoPath: String = ""
     @State private var imageEdition: String = "Windows 11 Pro"
     @State private var editions: [String] = []
     @State private var loadingEditions = false
     @State private var existing: BaselineMetadata?
+    @State private var showLicenseChecklist = false
 
     private var canBuild: Bool {
         !builder.isRunning && !isoPath.isEmpty && FileManager.default.fileExists(atPath: isoPath)
             && !imageEdition.isEmpty && !loadingEditions
     }
 
+    private var isFailed: Bool {
+        if case .failed = builder.phase { return true }
+        return false
+    }
+
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 20) {
                 header
-                if let existing { baselineStatus(existing) }
-                isoSection
-                editionSection
-                actionSection
-                progressSection
-                if let console = builder.console { consoleSection(console) }
-                logSection
+                if builder.isRunning {
+                    progressCard
+                    if let console = builder.console { consoleCard(console) }
+                    LogPane(buffer: builder.logBuffer, height: 150)
+                } else {
+                    if let existing { baselineCapsule(existing) }
+                    setupCard
+                    if isFailed { failureBanner }
+                    buildButton
+                    if isFailed { LogPane(buffer: builder.logBuffer, height: 150) }
+                }
             }
-            .padding(22)
+            .padding(26)
+            .frame(maxWidth: 720)
+            .frame(maxWidth: .infinity)   // 중앙 정렬 컬럼
+        }
+        .sheet(isPresented: $showLicenseChecklist) {
+            LicenseChecklistView {
+                let config = InstallConfig(isoPath: isoPath, imageEdition: imageEdition)
+                Task { await builder.build(config: config) }
+            }
         }
         .onAppear {
             if isoPath.isEmpty {
@@ -124,83 +166,153 @@ struct BuildView: View {
         }
     }
 
-    // MARK: - 섹션
+    // MARK: - 공통 헤더
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("MacSandbox — 베이스라인 자동 구축")
-                .font(.title2).fontWeight(.semibold)
-            Text("샌드박스를 처음 쓰려면 베이스라인이 필요합니다. 준비한 Windows 11 ARM64 ISO로 무인 설치를 1-round 실행해 단일 베이스라인을 만듭니다. (QEMU + HVF) 완료되면 바로 샌드박스 시작 화면으로 전환됩니다.")
-                .font(.callout).foregroundStyle(.secondary)
-        }
-    }
-
-    private func baselineStatus(_ meta: BaselineMetadata) -> some View {
-        GroupBox {
-            HStack(spacing: 10) {
-                Image(systemName: meta.status == .ready ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
-                    .foregroundStyle(meta.status == .ready ? .green : .orange)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("현재 베이스라인: \(meta.name) — \(meta.status.rawValue)")
-                        .fontWeight(.medium)
-                    Text("\(meta.diskSizeGB)GB · \(meta.locale) · \(meta.diskPath)")
-                        .font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
-                }
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(L("build.header.title"))
+                    .font(.title).fontWeight(.semibold)
                 Spacer()
+                if canReturnToSandbox && !builder.isRunning {
+                    Button(L("build.returnToSandbox")) { admin.leaveRebuildMode() }
+                }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(6)
+            Text(L("build.header.desc"))
+                .font(.callout).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
-    private var isoSection: some View {
-        GroupBox("설치 미디어 (Windows 11 ARM64 ISO)") {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text(isoPath.isEmpty ? "선택 안 됨" : (isoPath as NSString).lastPathComponent)
+    // MARK: - 설정 모드
+
+    /// 기존 베이스라인 요약 — 작은 캡슐 한 줄로(재구축 진입 시 현황 확인용).
+    private func baselineCapsule(_ meta: BaselineMetadata) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: meta.status == .ready ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
+                .foregroundStyle(meta.status == .ready ? .green : .orange)
+            Text(L("build.baseline.current", meta.name, meta.status.label))
+                .font(.callout).fontWeight(.medium)
+            Spacer()
+            Text("\(meta.diskSizeGB)GB · \(meta.locale)")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
+        .help(meta.diskPath)
+    }
+
+    /// ISO + 에디션을 한 카드로 묶은 설정 폼.
+    private var setupCard: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // ISO 선택 행
+            HStack(alignment: .center, spacing: 12) {
+                Image(systemName: "opticaldisc")
+                    .font(.title2).foregroundStyle(.secondary).frame(width: 28)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(isoPath.isEmpty ? L("build.iso.none") : (isoPath as NSString).lastPathComponent)
                         .fontWeight(.medium)
-                    Spacer()
-                    Button("ISO 선택...") { selectISO() }.disabled(builder.isRunning)
-                }
-                if !isoPath.isEmpty {
-                    Text(isoPath).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
-                    if !FileManager.default.fileExists(atPath: isoPath) {
-                        Label("파일을 찾을 수 없습니다.", systemImage: "xmark.octagon")
+                    if isoPath.isEmpty {
+                        Text(L("build.iso.title")).font(.caption).foregroundStyle(.secondary)
+                    } else {
+                        Text(isoPath).font(.caption).foregroundStyle(.secondary)
+                            .lineLimit(1).truncationMode(.middle).textSelection(.enabled)
+                    }
+                    if !isoPath.isEmpty, !FileManager.default.fileExists(atPath: isoPath) {
+                        Label(L("build.iso.missing"), systemImage: "xmark.octagon")
                             .font(.caption).foregroundStyle(.red)
                     }
                 }
+                Spacer()
+                Button(L("build.iso.choose")) { selectISO() }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(6)
-        }
-    }
+            .padding(14)
 
-    private var editionSection: some View {
-        GroupBox("Windows 에디션 (install.wim)") {
-            VStack(alignment: .leading, spacing: 8) {
+            Divider().padding(.horizontal, 14)
+
+            // 에디션 행
+            HStack(alignment: .center, spacing: 12) {
+                Image(systemName: "square.stack.3d.up")
+                    .font(.title2).foregroundStyle(.secondary).frame(width: 28)
                 if loadingEditions {
-                    HStack(spacing: 8) {
-                        ProgressView().controlSize(.small)
-                        Text("ISO에서 에디션 목록 읽는 중...").font(.caption).foregroundStyle(.secondary)
-                    }
+                    ProgressView().controlSize(.small)
+                    Text(L("build.edition.loading")).font(.caption).foregroundStyle(.secondary)
+                    Spacer()
                 } else if editions.isEmpty {
-                    Text(isoPath.isEmpty ? "먼저 ISO를 선택하세요." : "에디션을 읽지 못했습니다 (wimlib 설치 필요).")
+                    Text(isoPath.isEmpty ? L("build.edition.selectISOFirst") : L("build.edition.failed"))
                         .font(.caption).foregroundStyle(.secondary)
+                    Spacer()
                 } else {
-                    Picker("설치할 에디션", selection: $imageEdition) {
+                    Picker(L("build.edition.picker"), selection: $imageEdition) {
                         ForEach(editions, id: \.self) { Text($0).tag($0) }
                     }
                     .pickerStyle(.menu)
-                    .frame(maxWidth: 360)
-                    .disabled(builder.isRunning)
-                    Text("디스크 256GB · 8코어 · 16GB (표준 맥북 에어 사양) 기본값으로 빌드합니다.")
-                        .font(.caption2).foregroundStyle(.secondary)
                 }
             }
+            .padding(14)
+
+            Divider().padding(.horizontal, 14)
+
+            // 기본 사양 안내
+            Label(L("build.edition.defaults"), systemImage: "info.circle")
+                .font(.caption).foregroundStyle(.secondary)
+                .padding(.horizontal, 14).padding(.vertical, 10)
+        }
+        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    private var failureBanner: some View {
+        Label(builder.phase.label, systemImage: "exclamationmark.triangle.fill")
+            .font(.callout)
+            .foregroundStyle(.orange)
+            .padding(.horizontal, 12).padding(.vertical, 8)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(6)
+            .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var buildButton: some View {
+        Button {
+            showLicenseChecklist = true   // 매 빌드마다 라이선스 확인
+        } label: {
+            Label(L("build.action.build"), systemImage: "hammer")
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.large)
+        .disabled(!canBuild)
+    }
+
+    // MARK: - 설치 모드
+
+    private var progressCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(builder.phase.label).font(.headline)
+                Spacer()
+                Button(role: .destructive) { builder.cancel() } label: {
+                    Label(L("common.cancel"), systemImage: "stop.circle")
+                }
+                .controlSize(.regular)
+            }
+            ProgressView(value: builder.phase.fraction)
+            if !builder.detail.isEmpty {
+                Text(builder.detail).font(.caption).foregroundStyle(.secondary)
+            }
+            Text((isoPath as NSString).lastPathComponent + " · " + imageEdition)
+                .font(.caption2).foregroundStyle(.tertiary)
+        }
+        .padding(14)
+        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    private func consoleCard(_ console: VMConsole) -> some View {
+        GroupBox(L("build.console.title")) {
+            VMConsoleView(console: console)
+                .padding(6)
         }
     }
+
+    // MARK: - 액션
 
     private func loadEditions() {
         guard !isoPath.isEmpty, FileManager.default.fileExists(atPath: isoPath) else {
@@ -220,74 +332,6 @@ struct BuildView: View {
         }
     }
 
-    private var actionSection: some View {
-        HStack {
-            Button {
-                let config = InstallConfig(isoPath: isoPath, imageEdition: imageEdition)
-                Task { await builder.build(config: config) }
-            } label: {
-                Label(builder.isRunning ? "설치 진행 중..." : "베이스라인 빌드", systemImage: "hammer")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .disabled(!canBuild)
-
-            if builder.isRunning {
-                Button(role: .destructive) { builder.cancel() } label: {
-                    Label("취소", systemImage: "stop.circle").frame(maxWidth: 120)
-                }
-                .controlSize(.large)
-            }
-        }
-    }
-
-    private func consoleSection(_ console: VMConsole) -> some View {
-        GroupBox("VM 콘솔 (모니터링 · 개입)") {
-            VMConsoleView(console: console)
-                .padding(6)
-        }
-    }
-
-    private var progressSection: some View {
-        GroupBox {
-            VStack(alignment: .leading, spacing: 8) {
-                ProgressView(value: builder.phase.fraction)
-                HStack {
-                    Text(builder.phase.label).fontWeight(.medium)
-                    Spacer()
-                    if builder.isRunning { ProgressView().controlSize(.small) }
-                }
-                if !builder.detail.isEmpty {
-                    Text(builder.detail).font(.caption).foregroundStyle(.secondary)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(6)
-        }
-    }
-
-    private var logSection: some View {
-        GroupBox("로그") {
-            ScrollViewReader { proxy in
-                ScrollView {
-                    Text(builder.log.isEmpty ? "(아직 출력 없음)" : builder.log)
-                        .font(.system(.caption, design: .monospaced))
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .id("logbottom")
-                }
-                .frame(height: 180)
-                .onChange(of: builder.log) { _, _ in
-                    proxy.scrollTo("logbottom", anchor: .bottom)
-                }
-            }
-            .padding(6)
-        }
-    }
-
-    // MARK: - 액션
-
     private func selectISO() {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = false
@@ -296,7 +340,7 @@ struct BuildView: View {
         if let isoType = UTType(filenameExtension: "iso") {
             panel.allowedContentTypes = [isoType]
         }
-        panel.message = "Windows 11 ARM64 ISO 파일을 선택하세요"
+        panel.message = L("build.iso.panel")
         panel.directoryURL = SandboxPaths.fileManager.homeDirectoryForCurrentUser
             .appendingPathComponent("Downloads")
         if panel.runModal() == .OK, let url = panel.url {
