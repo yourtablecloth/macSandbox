@@ -29,6 +29,11 @@ Alternatively, the corresponding source for the bundled versions is included
 in this distribution under the `gpl-sources/` directory when present (run
 `python3 scripts/fetch_gpl_sources.py` at build/release time to populate it).
 
+MacSandbox's own code (the open-source edition) is licensed under the GNU
+Affero General Public License v3.0 or later (AGPL-3.0-or-later); its complete
+corresponding source is available from the project repository and on request
+at the contact above (AGPLv3 §6/§13).
+
 ---
 
 이 제품(MacSandbox)에는 GNU GPL v2/v3 및 LGPL v2.1/v3로 라이선스된 소프트웨어
@@ -42,3 +47,6 @@ THIRD-PARTY-NOTICES.md를 참고하세요.
 소스 요청 연락처: rkttu.official@gmail.com (제목: "MacSandbox GPL source request")
 물리적 매체 제공 시 실비 범위 내 비용이 청구될 수 있습니다. 배포본에 `gpl-sources/`
 디렉토리가 있으면 해당 소스가 직접 동봉된 것입니다.
+
+MacSandbox 자체 코드(오픈소스 에디션)는 GNU Affero GPL v3.0 이상(AGPL-3.0-or-later)으로
+제공되며, 그 대응 소스는 프로젝트 저장소 및 위 연락처를 통해 제공됩니다(AGPLv3 §6/§13).

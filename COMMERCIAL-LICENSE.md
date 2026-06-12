@@ -1,7 +1,7 @@
 # MacSandbox Commercial License (DRAFT TEMPLATE)
 
 > ⚠️ **초안 템플릿 — 법적 자문 아님.** 정식 사용 전 IP 변호사 검토 필수.
-> 이 문서는 MacSandbox **자체 저작물 코드**를 GPL-3.0 대신 상용 조건으로 사용하려는
+> 이 문서는 MacSandbox **자체 저작물 코드**를 AGPL-3.0 대신 상용 조건으로 사용하려는
 > 고객을 위한 라이선스의 골격입니다. 동봉되는 제3자 GPL/LGPL 구성요소(QEMU 등)에는
 > 적용되지 않으며, 그 부분은 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) 및 각자
 > 라이선스를 따릅니다.
@@ -14,8 +14,8 @@ Version 0.1 (DRAFT) — © 2026 Nam Jung Hyun (rkttu). All rights reserved.
 This Commercial License Agreement (the "Agreement") is between Nam Jung Hyun
 ("Licensor") and the individual or entity that purchased a commercial license
 ("Licensee"). It governs the use of the MacSandbox software components authored
-by Licensor (the "Licensed Software"), as an alternative to the GNU General
-Public License v3.0 ("GPLv3") under which the same components are also offered.
+by Licensor (the "Licensed Software"), as an alternative to the GNU Affero General
+Public License v3.0 ("AGPLv3") under which the same components are also offered.
 
 ## 1. Definitions
 
@@ -35,7 +35,7 @@ those granted by their respective licenses.
 Agreement, Licensor grants Licensee a non-exclusive, non-transferable,
 worldwide license to use, reproduce, modify, and distribute the Licensed
 Software, in source or binary form, as part of Licensee's products, WITHOUT
-the obligations of GPLv3 (including its copyleft and source-disclosure
+the obligations of AGPLv3 (including its copyleft, network-use (§13), and source-disclosure
 requirements) as applied to the Licensed Software and to Licensee's own
 modifications and combined works.
 
@@ -79,7 +79,7 @@ LICENSOR'S TOTAL LIABILITY SHALL NOT EXCEED THE FEES PAID BY LICENSEE.
 This Agreement is effective until terminated. It terminates automatically if
 Licensee breaches any term and fails to cure within thirty (30) days of notice.
 Upon termination, Licensee may, at Licensor's option, fall back to using the
-Licensed Software under GPLv3.
+Licensed Software under AGPLv3.
 
 ## 8. Governing Law
 
@@ -88,9 +88,9 @@ regard to conflict-of-laws principles. [조정 필요 / adjust as appropriate.]
 
 ## 9. Relationship to the Open-Source License
 
-The Licensed Software is dual-licensed. Anyone may instead use it under GPLv3
+The Licensed Software is dual-licensed. Anyone may instead use it under AGPLv3
 (see LICENSE). This Agreement is offered to those who do not wish to comply
-with GPLv3 for their use of the Licensed Software.
+with AGPLv3 for their use of the Licensed Software.
 
 ---
 Contact: rkttu.official@gmail.com
