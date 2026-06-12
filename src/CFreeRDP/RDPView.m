@@ -1,9 +1,9 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //
 // Copyright (C) 2026 Nam Jung Hyun (rkttu) <rkttu.official@gmail.com>
 //
 // This file is part of MacSandbox, which is dual-licensed:
-//   (1) under the GNU General Public License v3.0 or later (see LICENSE), or
+//   (1) under the GNU Affero General Public License v3.0 or later (see LICENSE), or
 //   (2) under a commercial license (see COMMERCIAL-LICENSE.md).
 // You may use this file under the terms of either license.
 //
@@ -30,8 +30,11 @@
 
     NSTimer *_clipTimer;        // 로컬 NSPasteboard 변경 감시
     NSInteger _lastChangeCount;
-    NSEventModifierFlags _prevMods;
     BOOL _gotFirstFrame;
+
+    int _kbdType, _kbdSubtype, _kbdLayout;  // 클라이언트 키보드 식별(0 = 기본)
+    double _wheelAccumY, _wheelAccumX;      // 트랙패드 정밀 스크롤 누적(120 = 1노치)
+    double _magnifyAccum;                   // 핀치 줌 누적 → Ctrl+휠로 변환
 
     // 렌더 계측(프레임률·이미지 생성 시간)
     double _frameMsAccum;
@@ -54,6 +57,8 @@
         _clipboardEnabled = YES;   // .wsb 기본(Windows Sandbox와 동일)
         _micEnabled = YES;
         _printerEnabled = NO;
+        _audioPlaybackEnabled = YES;
+        _hiDPIEnabled = YES;
         _mappedFolders = [NSMutableArray array];
     }
     return self;
@@ -156,6 +161,7 @@ static void rv_on_remote_files(void *ud, const char *const *paths, int count) {
     if (report) NSLog(@"[RDPView] render %.0f fps, img생성 %.2f ms/frame", fps, avgMs);
     if (!_gotFirstFrame) {
         _gotFirstFrame = YES;
+        [self syncLockKeys];   // 연결 직후 호스트 Caps Lock/NumLock 상태를 게스트에 반영
         if (self.onFirstFrame) self.onFirstFrame();
     }
 }
@@ -185,24 +191,90 @@ static void rv_on_remote_files(void *ud, const char *const *paths, int count) {
 - (void)mouseUp:(NSEvent *)e      { [self sendPointer:RDP_PTR_BUTTON1 event:e]; }
 - (void)rightMouseDown:(NSEvent *)e { [self sendPointer:RDP_PTR_DOWN | RDP_PTR_BUTTON2 event:e]; }
 - (void)rightMouseUp:(NSEvent *)e   { [self sendPointer:RDP_PTR_BUTTON2 event:e]; }
+- (void)otherMouseDown:(NSEvent *)e { [self sendPointer:RDP_PTR_DOWN | RDP_PTR_BUTTON3 event:e]; }
+- (void)otherMouseUp:(NSEvent *)e   { [self sendPointer:RDP_PTR_BUTTON3 event:e]; }
+- (void)otherMouseDragged:(NSEvent *)e { [self sendPointer:RDP_PTR_MOVE | RDP_PTR_BUTTON3 event:e]; }
+- (void)rightMouseDragged:(NSEvent *)e { [self sendPointer:RDP_PTR_MOVE | RDP_PTR_BUTTON2 event:e]; }
+
+// 누적치에서 휠 1회분(±255 클램프)을 잘라 RDP 휠 이벤트로 전송. 잔여는 누적 유지.
+// 회전량은 flags 하위 9비트 2의 보수(음수 = NEGATIVE 플래그 + 하위 8비트 보수값).
+- (void)flushWheel:(double *)accum horizontal:(BOOL)horizontal event:(NSEvent *)e {
+    if (!_engine) { *accum = 0; return; }
+    int v = (int)*accum;
+    if (v == 0) return;
+    if (v > 255) v = 255; else if (v < -255) v = -255;
+    *accum -= v;
+    uint16_t flags = (horizontal ? RDP_PTR_HWHEEL : RDP_PTR_WHEEL);
+    if (v < 0) flags |= RDP_PTR_WHEEL_NEGATIVE;
+    flags |= (uint16_t)(v & 0xFF);
+    int x, y; [self guestX:&x y:&y fromEvent:e];
+    rdp_engine_send_pointer(_engine, flags, x, y);
+}
+
+// 트랙패드/마우스 휠 → RDP 휠. 정밀 델타(트랙패드)는 픽셀 비례, 휠은 노치(±120) 단위.
+// scrollingDelta는 macOS '자연스러운 스크롤' 설정이 이미 반영된 값이라 그대로 따른다.
+- (void)scrollWheel:(NSEvent *)e {
+    double dy = e.scrollingDeltaY, dx = e.scrollingDeltaX;
+    if (e.hasPreciseScrollingDeltas) { dy *= 4.0; dx *= 4.0; }   // 1px ≈ 4/120 노치
+    else                             { dy *= 120.0; dx *= 120.0; } // 1라인 = 1노치
+    _wheelAccumY += dy;
+    _wheelAccumX -= dx;  // mac 오른쪽 패닝(+) = Windows 왼쪽 스크롤(-)
+    [self flushWheel:&_wheelAccumY horizontal:NO event:e];
+    [self flushWheel:&_wheelAccumX horizontal:YES event:e];
+}
+
+// 핀치 줌 → Windows 표준 Ctrl+휠 줌. 누적 배율 0.1마다 1노치.
+- (void)magnifyWithEvent:(NSEvent *)e {
+    if (!_engine) return;
+    _magnifyAccum += e.magnification;
+    while (_magnifyAccum >= 0.1 || _magnifyAccum <= -0.1) {
+        int dir = _magnifyAccum > 0 ? 120 : -120;
+        _magnifyAccum -= (dir > 0 ? 0.1 : -0.1);
+        uint16_t flags = RDP_PTR_WHEEL | (dir < 0 ? RDP_PTR_WHEEL_NEGATIVE : 0)
+                       | (uint16_t)(dir & 0xFF);
+        int x, y; [self guestX:&x y:&y fromEvent:e];
+        rdp_engine_send_mac_key(_engine, 59, 1);            // Ctrl down (좌측)
+        rdp_engine_send_pointer(_engine, flags, x, y);      // 휠 ±120
+        rdp_engine_send_mac_key(_engine, 59, 0);            // Ctrl up
+    }
+}
 
 - (void)keyDown:(NSEvent *)e { if (_engine) rdp_engine_send_mac_key(_engine, e.keyCode, 1); }
 - (void)keyUp:(NSEvent *)e   { if (_engine) rdp_engine_send_mac_key(_engine, e.keyCode, 0); }
 
+// 현재 호스트 Caps Lock 상태를 게스트에 동기화(+ 키패드 일관성 위해 NumLock은 항상 on).
+- (void)syncLockKeys {
+    if (!_engine) return;
+    BOOL caps = (NSEvent.modifierFlags & NSEventModifierFlagCapsLock) != 0;
+    rdp_engine_send_sync_locks(_engine, caps ? 1 : 0, 1);
+}
+
+// modifier 키는 flagsChanged로만 온다. keyCode로 좌/우를 구분해 그대로 전달한다
+// (오른쪽 Option=한/영 등 좌우가 다른 매핑 지원). 눌림/뗌은 장치별 플래그로 판정.
 - (void)flagsChanged:(NSEvent *)e {
-    NSEventModifierFlags now = e.modifierFlags;
-    const struct { NSEventModifierFlags mask; uint16_t code; } mods[] = {
-        { NSEventModifierFlagShift,   56 },
-        { NSEventModifierFlagControl, 59 },
-        { NSEventModifierFlagOption,  58 },
-        { NSEventModifierFlagCommand, 55 },
+    if (!_engine) return;
+    // NX_DEVICE*KEYMASK (IOKit 장치별 modifier 플래그 — 좌/우 개별 상태)
+    static const struct { uint16_t keyCode; NSEventModifierFlags deviceMask; } mods[] = {
+        { 56, 0x0002 },   // left shift
+        { 60, 0x0004 },   // right shift
+        { 59, 0x0001 },   // left control
+        { 62, 0x2000 },   // right control
+        { 58, 0x0020 },   // left option
+        { 61, 0x0040 },   // right option (한국어 키보드 타입이면 게스트에서 한/영)
+        { 55, 0x0008 },   // left command
+        { 54, 0x0010 },   // right command
     };
-    for (int i = 0; i < 4; i++) {
-        BOOL was = (_prevMods & mods[i].mask) != 0;
-        BOOL is = (now & mods[i].mask) != 0;
-        if (was != is && _engine) rdp_engine_send_mac_key(_engine, mods[i].code, is ? 1 : 0);
+    uint16_t kc = e.keyCode;
+    if (kc == 57) {       // Caps Lock — 키 자체 대신 토글 상태를 동기화(상태 불일치 방지)
+        [self syncLockKeys];
+        return;
     }
-    _prevMods = now;
+    for (size_t i = 0; i < sizeof(mods) / sizeof(mods[0]); i++) {
+        if (mods[i].keyCode != kc) continue;
+        BOOL down = (e.modifierFlags & mods[i].deviceMask) != 0;
+        rdp_engine_send_mac_key(_engine, kc, down ? 1 : 0);
+        return;
+    }
 }
 
 // 동적 해상도: 뷰 크기가 바뀌면(디바운스) 게스트 데스크톱을 창의 픽셀 크기에 맞춘다.
@@ -214,13 +286,20 @@ static void rv_on_remote_files(void *ud, const char *const *paths, int count) {
 
 - (void)pushResize {
     if (!_engine) return;
-    NSSize px = [self convertSizeToBacking:self.bounds.size]; // 포인트→백킹 픽셀(선명도)
-    int w = (int)(px.width + 0.5), h = (int)(px.height + 0.5);
-    // 게스트 DPI 배율을 호스트 디스플레이 배율에 맞춤(Retina 2x → 200% → UI가 작지 않게).
-    CGFloat bs = self.window.backingScaleFactor;
-    if (bs < 1.0) bs = NSScreen.mainScreen.backingScaleFactor;
-    if (bs < 1.0) bs = 1.0;
-    int scale = (int)(bs * 100.0 + 0.5);
+    int w, h, scale;
+    if (_hiDPIEnabled) {
+        NSSize px = [self convertSizeToBacking:self.bounds.size]; // 포인트→백킹 픽셀(선명도)
+        w = (int)(px.width + 0.5); h = (int)(px.height + 0.5);
+        // 게스트 DPI 배율을 호스트 디스플레이 배율에 맞춤(Retina 2x → 200% → UI가 작지 않게).
+        CGFloat bs = self.window.backingScaleFactor;
+        if (bs < 1.0) bs = NSScreen.mainScreen.backingScaleFactor;
+        if (bs < 1.0) bs = 1.0;
+        scale = (int)(bs * 100.0 + 0.5);
+    } else {
+        // 표준 해상도 — 포인트 크기 그대로(렌더 부하↓, 선명도↓), DPI 100%.
+        w = (int)(self.bounds.size.width + 0.5); h = (int)(self.bounds.size.height + 0.5);
+        scale = 100;
+    }
     if (w > 0 && h > 0) rdp_engine_request_resize(_engine, w, h, scale);
 }
 
@@ -244,6 +323,9 @@ static void rv_on_remote_files(void *ud, const char *const *paths, int count) {
                                 rv_on_frame, rv_on_status, rv_on_remote_text,
                                 (__bridge void *)self);
     rdp_engine_set_features(_engine, _clipboardEnabled, _micEnabled, _printerEnabled);
+    rdp_engine_set_audio_playback(_engine, _audioPlaybackEnabled);
+    if (_kbdType > 0 || _kbdLayout > 0)
+        rdp_engine_set_keyboard(_engine, _kbdType, _kbdSubtype, _kbdLayout);
     for (NSDictionary *f in _mappedFolders) {
         rdp_engine_add_mapped_folder(_engine, [f[@"path"] UTF8String], [f[@"name"] UTF8String],
                                      [f[@"readOnly"] boolValue] ? 1 : 0);
@@ -254,6 +336,10 @@ static void rv_on_remote_files(void *ud, const char *const *paths, int count) {
     _lastChangeCount = NSPasteboard.generalPasteboard.changeCount;
     _clipTimer = [NSTimer scheduledTimerWithTimeInterval:0.5 target:self
                   selector:@selector(checkLocalClipboard) userInfo:nil repeats:YES];
+}
+
+- (void)setKeyboardType:(int)type subtype:(int)subtype layout:(int)layout {
+    _kbdType = type; _kbdSubtype = subtype; _kbdLayout = layout;
 }
 
 - (void)addMappedFolder:(NSString *)hostPath name:(NSString *)name readOnly:(BOOL)readOnly {

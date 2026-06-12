@@ -1,9 +1,9 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //
 // Copyright (C) 2026 Nam Jung Hyun (rkttu) <rkttu.official@gmail.com>
 //
 // This file is part of MacSandbox, which is dual-licensed:
-//   (1) under the GNU General Public License v3.0 or later (see LICENSE), or
+//   (1) under the GNU Affero General Public License v3.0 or later (see LICENSE), or
 //   (2) under a commercial license (see COMMERCIAL-LICENSE.md).
 // You may use this file under the terms of either license.
 //
@@ -101,6 +101,8 @@ struct RDPEngine {
     int featClipboard;           // 클립보드 리다이렉션 on/off(.wsb ClipboardRedirection)
     int featMic;                 // 마이크 캡처 on/off(.wsb AudioInput). 스피커 재생은 상시.
     int featPrinter;             // 프린터 리다이렉션 on/off(.wsb PrinterRedirection)
+    int featSound;               // 오디오 재생(rdpsnd) on/off — 기본 on(옵션으로 끔)
+    int kbdType, kbdSubtype, kbdLayout; // 클라이언트 키보드 식별(0 = FreeRDP 기본)
     struct { char path[2048]; char name[256]; } mapped[16]; // 공유 폴더(.wsb MappedFolders)
     int mappedCount;
 
@@ -165,6 +167,17 @@ static BOOL eng_load_channels(freerdp *instance) {
     if (freerdp_settings_get_bool(s, FreeRDP_RedirectClipboard)) {
         const char *clipArgs[] = { "cliprdr" };
         freerdp_client_add_static_channel(s, 1, clipArgs);
+    }
+    // 오디오 재생(rdpsnd): load_addins의 자동 추가는 서브시스템 미지정이라 백엔드 자동 선택에
+    // 맡겨진다. CoreAudio(sys:mac)를 명시해 무음(fake) 백엔드로 빠지지 않게 한다.
+    if (freerdp_settings_get_bool(s, FreeRDP_AudioPlayback)) {
+        const char *sndArgs[] = { "rdpsnd", "sys:mac" };
+        freerdp_client_add_static_channel(s, 2, sndArgs);
+    }
+    // 마이크(audin)도 AVFoundation(sys:mac) 서브시스템을 명시.
+    if (freerdp_settings_get_bool(s, FreeRDP_AudioCapture)) {
+        const char *micArgs[] = { "audin", "sys:mac" };
+        freerdp_client_add_dynamic_channel(s, 2, micArgs);
     }
     BOOL ok = freerdp_client_load_addins(instance->context->channels, s);
     return ok;
@@ -537,12 +550,42 @@ static void eng_channel_connected(void *context, const ChannelConnectedEventArgs
         rdpGdi *gdi = ((rdpContext *)context)->gdi;
         if (gdi) gdi_graphics_pipeline_init(gdi, eng->gfx);
         fprintf(stderr, "[rdpgfx] 채널 연결됨\n");
+    } else if (strcmp(e->name, "rdpsnd") == 0 || strcmp(e->name, "audin") == 0 ||
+               strcmp(e->name, "rdpdr") == 0) {
+        fprintf(stderr, "[%s] 채널 연결됨\n", e->name);  // 오디오/장치 채널 협상 진단용
+    }
+}
+
+// 채널 해제 훅 — 그래픽 파이프라인 해제는 **반드시 여기서**(업스트림 클라이언트와 동일).
+//
+// eng_run 말미(disconnect 전)에 gdi_graphics_pipeline_uninit을 부르면, 아직 살아있는
+// drdynvc 채널 스레드가 progressive 디코더(타일 스레드풀)를 돌리는 동안 타일 메모리를
+// 해제해 UAF 크래시가 난다(progressive_rfx_decode_component, pc=0). disconnect가 채널을
+// 정지시키는 과정에서 이 핸들러를 호출하므로, 이 시점엔 해당 채널의 디코딩이 끝나 있다.
+static void eng_channel_disconnected(void *context, const ChannelDisconnectedEventArgs *e) {
+    RDPEngine *eng = ((engContext *)context)->engine;
+    if (strcmp(e->name, RDPGFX_DVC_CHANNEL_NAME) == 0) {
+        rdpGdi *gdi = ((rdpContext *)context)->gdi;
+        if (gdi && eng->gfx) gdi_graphics_pipeline_uninit(gdi, eng->gfx);
+        eng->gfx = NULL;
+        fprintf(stderr, "[rdpgfx] 채널 해제됨\n");
+    } else if (strcmp(e->name, CLIPRDR_SVC_CHANNEL_NAME) == 0) {
+        // 메인 스레드 클립보드 광고가 해제된 채널 컨텍스트를 만지지 않게 NULL.
+        pthread_mutex_lock(&eng->clipLock);
+        eng->clip = NULL;
+        pthread_mutex_unlock(&eng->clipLock);
+    } else if (strcmp(e->name, DISP_DVC_CHANNEL_NAME) == 0) {
+        eng->disp = NULL;   // 리사이즈 요청이 해제된 채널을 만지지 않게
     }
 }
 
 // 로컬 파일 클립보드 포맷 목록 전송(local→remote 광고: FileGroupDescriptorW + FileContents)
+// clip 포인터는 채널 해제(eng_channel_disconnected)와 경합하지 않게 잠금 하에 읽는다.
 static void eng_announce_local_files(RDPEngine *e) {
-    if (!e->clip || !e->clip->ClientFormatList) return;
+    pthread_mutex_lock(&e->clipLock);
+    CliprdrClientContext *clip = e->clip;
+    pthread_mutex_unlock(&e->clipLock);
+    if (!clip || !clip->ClientFormatList) return;
     CLIPRDR_FORMAT fmts[2] = { 0 };
     fmts[0].formatId = FMT_FILEDESCRIPTORW; fmts[0].formatName = (char *)"FileGroupDescriptorW";
     fmts[1].formatId = FMT_FILECONTENTS;    fmts[1].formatName = (char *)"FileContents";
@@ -550,12 +593,15 @@ static void eng_announce_local_files(RDPEngine *e) {
     list.common.msgType = CB_FORMAT_LIST;
     list.numFormats = 2;
     list.formats = fmts;
-    e->clip->ClientFormatList(e->clip, &list);
+    clip->ClientFormatList(clip, &list);
 }
 
 // 로컬 클립보드 텍스트 포맷 목록 전송(local→remote 광고)
 static void eng_announce_local_text(RDPEngine *e) {
-    if (!e->clip || !e->clip->ClientFormatList) return;
+    pthread_mutex_lock(&e->clipLock);
+    CliprdrClientContext *clip = e->clip;
+    pthread_mutex_unlock(&e->clipLock);
+    if (!clip || !clip->ClientFormatList) return;
     CLIPRDR_FORMAT format = { 0 };
     format.formatId = CF_UNICODETEXT;
     format.formatName = NULL;
@@ -563,7 +609,7 @@ static void eng_announce_local_text(RDPEngine *e) {
     list.common.msgType = CB_FORMAT_LIST;
     list.numFormats = 1;
     list.formats = &format;
-    e->clip->ClientFormatList(e->clip, &list);
+    clip->ClientFormatList(clip, &list);
 }
 
 #pragma mark - 실행
@@ -581,6 +627,7 @@ static freerdp *eng_new_instance(RDPEngine *e) {
     if (!freerdp_context_new(instance)) { freerdp_free(instance); return NULL; }
     ((engContext *)instance->context)->engine = e;
     PubSub_SubscribeChannelConnected(instance->context->pubSub, eng_channel_connected);
+    PubSub_SubscribeChannelDisconnected(instance->context->pubSub, eng_channel_disconnected);
 
     rdpSettings *s = instance->context->settings;
     freerdp_settings_set_string(s, FreeRDP_ServerHostname, e->host);
@@ -612,9 +659,9 @@ static freerdp *eng_new_instance(RDPEngine *e) {
         const char *args[] = { "drive", e->mapped[i].name, e->mapped[i].path };
         freerdp_client_add_device_channel(s, 3, args);
     }
-    // 오디오 재생(게스트→호스트, 스피커): rdpsnd + macOS CoreAudio. .wsb엔 토글이 없어 상시 켬
-    // (Windows Sandbox도 게스트 오디오를 항상 호스트로 재생).
-    freerdp_settings_set_bool(s, FreeRDP_AudioPlayback, TRUE);
+    // 오디오 재생(게스트→호스트, 스피커): rdpsnd + macOS CoreAudio. .wsb엔 토글이 없어
+    // 기본 켬(Windows Sandbox도 게스트 오디오를 항상 호스트로 재생). 옵션으로만 끈다.
+    freerdp_settings_set_bool(s, FreeRDP_AudioPlayback, e->featSound ? TRUE : FALSE);
     // 마이크(호스트→게스트): audin + macOS AVFAudio. .wsb AudioInput으로 게이팅.
     // 최초 사용 시 macOS 마이크 권한 프롬프트(Info.plist NSMicrophoneUsageDescription).
     freerdp_settings_set_bool(s, FreeRDP_AudioCapture, e->featMic ? TRUE : FALSE);
@@ -629,6 +676,14 @@ static freerdp *eng_new_instance(RDPEngine *e) {
         freerdp_settings_set_uint32(s, FreeRDP_DesktopScaleFactor, sc);
         freerdp_settings_set_uint32(s, FreeRDP_DeviceScaleFactor, 100);
     }
+    // 클라이언트 키보드 식별 — 게스트의 세션 키보드 드라이버 선택 기준(한/영 키 매핑 등).
+    // 예: 한국어 (8,3,0x412)면 게스트가 kbd101a를 골라 오른쪽 Alt가 한/영 전환이 된다.
+    if (e->kbdType > 0)
+        freerdp_settings_set_uint32(s, FreeRDP_KeyboardType, (UINT32)e->kbdType);
+    if (e->kbdSubtype > 0)
+        freerdp_settings_set_uint32(s, FreeRDP_KeyboardSubType, (UINT32)e->kbdSubtype);
+    if (e->kbdLayout > 0)
+        freerdp_settings_set_uint32(s, FreeRDP_KeyboardLayout, (UINT32)e->kbdLayout);
     // 채널(cliprdr/disp) 로드 + 구독은 PreConnect(eng_pre_connect)에서 처리.
     return instance;
 }
@@ -667,11 +722,14 @@ static void eng_run(RDPEngine *e) {
     }
 
     eng_status(e, "연결 종료");
-    if (e->gfx && instance->context->gdi) {
-        gdi_graphics_pipeline_uninit(instance->context->gdi, e->gfx);
+    // 그래픽 파이프라인 해제는 disconnect 중 ChannelDisconnected(rdpgfx) 핸들러가 수행한다
+    // (여기서 먼저 해제하면 진행 중인 progressive 타일 디코딩과 레이스 → UAF 크래시).
+    freerdp_disconnect(instance);
+    if (e->gfx) {   // 이벤트 미발화 폴백 — 이 시점엔 채널 스레드가 모두 정지된 상태
+        if (instance->context->gdi)
+            gdi_graphics_pipeline_uninit(instance->context->gdi, e->gfx);
         e->gfx = NULL;
     }
-    freerdp_disconnect(instance);
     freerdp_context_free(instance);
     freerdp_free(instance);
     e->instance = NULL;
@@ -697,12 +755,32 @@ RDPEngine *rdp_engine_create(const char *host, int port,
     e->onStatus = onStatus;
     e->onRemoteText = onRemoteText;
     e->userdata = userdata;
-    // 기본값: Windows Sandbox 표준(클립보드·마이크 on, 프린터 off). set_features로 덮어쓴다.
+    // 기본값: Windows Sandbox 표준(클립보드·마이크·스피커 on, 프린터 off). set_*로 덮어쓴다.
     e->featClipboard = 1;
     e->featMic = 1;
     e->featPrinter = 0;
+    e->featSound = 1;
     pthread_mutex_init(&e->clipLock, NULL);
     return e;
+}
+
+void rdp_engine_set_audio_playback(RDPEngine *e, int playback) {
+    if (e) e->featSound = playback ? 1 : 0;
+}
+
+void rdp_engine_set_keyboard(RDPEngine *e, int type, int subtype, int layout) {
+    if (!e) return;
+    e->kbdType = type;
+    e->kbdSubtype = subtype;
+    e->kbdLayout = layout;
+}
+
+void rdp_engine_send_sync_locks(RDPEngine *e, int capsLock, int numLock) {
+    if (!e || !e->instance) return;
+    UINT32 flags = 0;
+    if (capsLock) flags |= KBD_SYNC_CAPS_LOCK;
+    if (numLock) flags |= KBD_SYNC_NUM_LOCK;
+    freerdp_input_send_synchronize_event(e->instance->context->input, flags);
 }
 
 // 리다이렉션 기능 게이팅(.wsb 반영). rdp_engine_start 전에 호출해야 한다.

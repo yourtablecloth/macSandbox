@@ -1,9 +1,9 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //
 // Copyright (C) 2026 Nam Jung Hyun (rkttu) <rkttu.official@gmail.com>
 //
 // This file is part of MacSandbox, which is dual-licensed:
-//   (1) under the GNU General Public License v3.0 or later (see LICENSE), or
+//   (1) under the GNU Affero General Public License v3.0 or later (see LICENSE), or
 //   (2) under a commercial license (see COMMERCIAL-LICENSE.md).
 // You may use this file under the terms of either license.
 //
@@ -73,11 +73,27 @@ void rdp_engine_request_resize(RDPEngine *engine, int width, int height, int sca
 #define RDP_PTR_BUTTON2 0x2000
 #define RDP_PTR_BUTTON3 0x4000
 #define RDP_PTR_WHEEL   0x0200
+#define RDP_PTR_HWHEEL  0x0400
+// 휠 회전량은 flags 하위 9비트(2의 보수). 음수면 NEGATIVE 플래그 + 하위 8비트 보수값.
+#define RDP_PTR_WHEEL_NEGATIVE 0x0100
 
 // 입력 주입(인앱 뷰 상호작용). flags는 RDP_PTR_*. x/y는 게스트 해상도 좌표.
 void rdp_engine_send_pointer(RDPEngine *engine, uint16_t flags, int x, int y);
 // macOS 키코드(NSEvent.keyCode)를 RDP 스캔코드로 변환해 전송.
 void rdp_engine_send_mac_key(RDPEngine *engine, uint16_t macKeyCode, int down);
+
+// 오디오 재생(rdpsnd, 게스트→호스트 스피커) on/off — 기본 on. rdp_engine_start 전에 호출.
+// CoreAudio(sys:mac) 서브시스템을 명시 지정해 무음(fake) 백엔드 선택을 막는다.
+void rdp_engine_set_audio_playback(RDPEngine *engine, int playback);
+
+// 클라이언트 키보드 식별(타입/서브타입/레이아웃) — 게스트가 세션 키보드 드라이버를 고르는 기준.
+// 예: 한국어 101키 Type A = (8, 3, 0x412) → 오른쪽 Alt가 한/영, 오른쪽 Ctrl이 한자.
+//     일본어 106키       = (7, 2, 0x411). 0이면 FreeRDP 기본. rdp_engine_start 전에 호출.
+void rdp_engine_set_keyboard(RDPEngine *engine, int type, int subtype, int layout);
+
+// 토글 키 상태 동기화(호스트→게스트, RDP Synchronize Event). capsLock/numLock = 0|1.
+// 연결 후 임의 시점 호출 가능(미연결 시 무시).
+void rdp_engine_send_sync_locks(RDPEngine *engine, int capsLock, int numLock);
 
 #ifdef __cplusplus
 }
