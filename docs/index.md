@@ -56,7 +56,7 @@ on exit**.
 
 ```sh
 brew install freerdp wimlib
-git clone https://github.com/rkttu/macSandbox.git
+git clone https://github.com/yourtablecloth/macSandbox.git
 cd macSandbox
 swift build && .build/debug/MacSandbox
 ```
@@ -64,15 +64,15 @@ swift build && .build/debug/MacSandbox
 Requirements: Apple Silicon Mac, macOS 14+, your own licensed Windows 11
 ARM64 ISO, ~24 GB free disk space for the one-time baseline build.
 
-See the [README](https://github.com/rkttu/macSandbox#readme) for packaging
+See the [README](https://github.com/yourtablecloth/macSandbox#readme) for packaging
 (`scripts/package_app.sh`), command-line switches, and the
-[architecture guide](https://github.com/rkttu/macSandbox/blob/main/ARCHITECTURE.md).
+[architecture guide](https://github.com/yourtablecloth/macSandbox/blob/main/ARCHITECTURE.md).
 
 ## Licensing
 
 Dual-licensed: **GNU AGPL-3.0-or-later** (open-source edition) or a
 **commercial license** — see
-[LICENSING.md](https://github.com/rkttu/macSandbox/blob/main/LICENSING.md).
+[LICENSING.md](https://github.com/yourtablecloth/macSandbox/blob/main/LICENSING.md).
 Bundled QEMU, EDK2 firmware and linked FreeRDP remain under their own
 licenses.
 
@@ -84,5 +84,5 @@ licenses.
 ## Support
 
 Bug reports and feature requests are accepted **only via
-[GitHub Issues](https://github.com/rkttu/macSandbox/issues)** — there is no
+[GitHub Issues](https://github.com/yourtablecloth/macSandbox/issues)** — there is no
 e-mail support channel.

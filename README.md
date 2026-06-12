@@ -65,7 +65,7 @@ MacSandbox --memory 8192 --cpus 4 --folder ~/Downloads:ro --logon "notepad"
 - [ARCHITECTURE.md](ARCHITECTURE.md) — how the deterministic WinPE/DISM
   baseline build and the QEMU + embedded-RDP runtime work
 - [WSB-SUPPORT.md](WSB-SUPPORT.md) — `.wsb` configuration support matrix
-- [Project website](https://rkttu.github.io/macSandbox/) (GitHub Pages, served
+- [Project website](https://yourtablecloth.github.io/macSandbox/) (GitHub Pages, served
   from `docs/`)
 
 ## Licensing
@@ -90,7 +90,7 @@ companies.
 ## Contributing & Support
 
 - **Bug reports and feature requests are accepted only via
-  [GitHub Issues](https://github.com/rkttu/macSandbox/issues).** There is no
+  [GitHub Issues](https://github.com/yourtablecloth/macSandbox/issues).** There is no
   e-mail support channel.
 - External contributions require agreeing to the [CLA](CLA.md), which enables
   the project's dual-licensing model (AGPL + commercial).

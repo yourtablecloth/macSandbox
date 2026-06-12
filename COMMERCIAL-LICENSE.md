@@ -93,4 +93,4 @@ The Licensed Software is dual-licensed. Anyone may instead use it under AGPLv3
 with AGPLv3 for their use of the Licensed Software.
 
 ---
-Contact: https://github.com/rkttu/macSandbox (commercial inquiries and all issue reports are accepted only via GitHub Issues)
+Contact: https://github.com/yourtablecloth/macSandbox (commercial inquiries and all issue reports are accepted only via GitHub Issues)
