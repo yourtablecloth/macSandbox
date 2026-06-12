@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
-// Copyright (C) 2026 Nam Jung Hyun (rkttu) <rkttu.official@gmail.com>
+// Copyright (C) 2026 Nam Jung Hyun (rkttu)
 //
 // This file is part of MacSandbox, which is dual-licensed:
 //   (1) under the GNU Affero General Public License v3.0 or later (see LICENSE), or

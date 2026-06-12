@@ -87,10 +87,13 @@ macSandbox for Windows is an independent project, not affiliated with or
 endorsed by Microsoft. Windows is a trademark of the Microsoft group of
 companies.
 
-## Contributing
+## Contributing & Support
 
-External contributions require agreeing to the [CLA](CLA.md), which enables
-the project's dual-licensing model (AGPL + commercial).
+- **Bug reports and feature requests are accepted only via
+  [GitHub Issues](https://github.com/rkttu/macSandbox/issues).** There is no
+  e-mail support channel.
+- External contributions require agreeing to the [CLA](CLA.md), which enables
+  the project's dual-licensing model (AGPL + commercial).
 
 ---
-© 2026 Nam Jung Hyun (rkttu) · <rkttu.official@gmail.com>
+© 2026 Nam Jung Hyun (rkttu)

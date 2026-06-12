@@ -10,7 +10,7 @@ import os
 import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-HOLDER = "Nam Jung Hyun (rkttu) <rkttu.official@gmail.com>"
+HOLDER = "Nam Jung Hyun (rkttu)"
 YEAR = "2026"
 TARGET_DIRS = ["src"]
 EXTS = (".swift", ".c", ".m", ".h")

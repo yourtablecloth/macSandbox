@@ -80,3 +80,9 @@ licenses.
 > own Windows 11 ARM64 ISO and hold a valid license for each Windows instance
 > you run. This is an independent project, not affiliated with or endorsed by
 > Microsoft. Windows is a trademark of the Microsoft group of companies.
+
+## Support
+
+Bug reports and feature requests are accepted **only via
+[GitHub Issues](https://github.com/rkttu/macSandbox/issues)** — there is no
+e-mail support channel.
