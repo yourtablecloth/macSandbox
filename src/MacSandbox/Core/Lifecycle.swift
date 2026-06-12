@@ -1,9 +1,9 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //
 // Copyright (C) 2026 Nam Jung Hyun (rkttu) <rkttu.official@gmail.com>
 //
 // This file is part of MacSandbox, which is dual-licensed:
-//   (1) under the GNU General Public License v3.0 or later (see LICENSE), or
+//   (1) under the GNU Affero General Public License v3.0 or later (see LICENSE), or
 //   (2) under a commercial license (see COMMERCIAL-LICENSE.md).
 // You may use this file under the terms of either license.
 //
@@ -30,11 +30,11 @@ final class AppHooks {
 private func confirmStopAndQuit() -> Bool {
     guard let runner = AppHooks.shared.runner, runner.isRunning else { return true }
     let alert = NSAlert()
-    alert.messageText = "샌드박스를 종료할까요?"
-    alert.informativeText = "창을 닫으면 실행 중인 일회용 샌드박스가 종료되고, 변경사항은 모두 폐기됩니다."
+    alert.messageText = L("quit.title")
+    alert.informativeText = L("quit.message.close")
     alert.alertStyle = .warning
-    alert.addButton(withTitle: "종료")   // 기본(첫 번째)
-    alert.addButton(withTitle: "취소")
+    alert.addButton(withTitle: L("quit.confirm"))   // 기본(첫 번째)
+    alert.addButton(withTitle: L("common.cancel"))
     guard alert.runModal() == .alertFirstButtonReturn else { return false }
     runner.stop()
     Task { @MainActor in
@@ -72,11 +72,11 @@ final class SandboxAppDelegate: NSObject, NSApplicationDelegate {
                 return NSApplication.TerminateReply.terminateNow
             }
             let alert = NSAlert()
-            alert.messageText = "샌드박스를 종료할까요?"
-            alert.informativeText = "실행 중인 일회용 샌드박스가 종료되고, 변경사항은 모두 폐기됩니다."
+            alert.messageText = L("quit.title")
+            alert.informativeText = L("quit.message.quit")
             alert.alertStyle = .warning
-            alert.addButton(withTitle: "종료")
-            alert.addButton(withTitle: "취소")
+            alert.addButton(withTitle: L("quit.confirm"))
+            alert.addButton(withTitle: L("common.cancel"))
             guard alert.runModal() == .alertFirstButtonReturn else {
                 return NSApplication.TerminateReply.terminateCancel
             }

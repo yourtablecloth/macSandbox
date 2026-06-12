@@ -1,0 +1,160 @@
+/* macSandbox for Windows — Español */
+
+/* Common */
+"common.cancel" = "Cancelar";
+"common.log" = "Registro";
+"common.log.empty" = "(sin salida todavía)";
+
+/* Menu */
+"menu.sandbox" = "Sandbox";
+"menu.stop" = "Detener sandbox";
+"menu.rebuild" = "Reconstruir línea base…";
+"menu.destroy" = "Destruir imagen base…";
+
+/* Build view */
+"build.header.title" = "Configuración de la línea base";
+"build.header.desc" = "Se necesita una línea base antes de usar el sandbox. Su ISO de Windows 11 ARM64 se instala de forma desatendida en una sola ronda para crear la imagen base (QEMU + HVF). Al terminar, el sandbox se inicia automáticamente.";
+"build.baseline.current" = "Línea base actual: %@ — %@";
+"baseline.status.creating" = "Creando";
+"baseline.status.ready" = "Lista";
+"baseline.status.error" = "Error";
+"build.iso.title" = "Medio de instalación (ISO de Windows 11 ARM64)";
+"build.iso.none" = "Sin seleccionar";
+"build.iso.choose" = "Elegir ISO…";
+"build.iso.missing" = "Archivo no encontrado.";
+"build.iso.panel" = "Seleccione un archivo ISO de Windows 11 ARM64";
+"build.edition.title" = "Edición de Windows (install.wim)";
+"build.edition.loading" = "Leyendo la lista de ediciones de la ISO…";
+"build.edition.selectISOFirst" = "Seleccione primero una ISO.";
+"build.edition.failed" = "No se pudieron leer las ediciones (se requiere wimlib).";
+"build.edition.picker" = "Edición a instalar";
+"build.edition.defaults" = "Compila con valores predeterminados: disco de 256 GB · 8 núcleos · 16 GB de RAM (especificación estándar de MacBook Air).";
+"build.action.build" = "Crear línea base";
+"build.action.inProgress" = "Instalando…";
+"build.console.title" = "Consola de la VM (supervisar · intervenir)";
+"build.returnToSandbox" = "Volver al sandbox";
+
+/* Build phases */
+"phase.idle" = "Inactivo";
+"phase.preparingDisk" = "Creando disco";
+"phase.preparingFirmware" = "Preparando firmware UEFI";
+"phase.generatingUnattend" = "Creando medio de instalación desatendida";
+"phase.installing" = "Instalando Windows (desatendido)";
+"phase.finalizing" = "Finalizando línea base";
+"phase.completed" = "Completado";
+"phase.failed" = "Error: %@";
+
+/* Build details */
+"build.detail.cleanup" = "Limpiando la línea base anterior…";
+"build.detail.disk" = "Creando disco qcow2 de %d GB…";
+"build.detail.firmware" = "Comprobando firmware UEFI…";
+"build.detail.media" = "Creando medio de implementación WinPE (edición de boot.wim + disco GPT)…";
+"build.detail.drivers" = "Preparando controladores virtio-win…";
+"build.detail.phase1" = "Fase 1/2: Implementando Windows desde WinPE (DISM /Apply-Image)…";
+"build.detail.phase2" = "Fase 2/2: Configurando el primer arranque de Windows (OOBE)…";
+"build.detail.finalize" = "Finalizando línea base…";
+"build.detail.done" = "¡Línea base creada!";
+
+/* Sandbox run states */
+"run.state.idle" = "Inactivo";
+"run.state.preparing" = "Preparando el disco del sandbox…";
+"run.state.booting" = "Arrancando el sandbox (esperando RDP integrado)";
+"run.state.ended" = "Finalizado";
+"run.state.failed" = "Error: %@";
+"run.state.noBaseline" = "No hay ninguna línea base utilizable.";
+
+/* Sandbox run view */
+"run.boot.title" = "El sandbox está arrancando";
+"run.boot.hint" = "RDP se conecta a la vista integrada cuando Windows haya arrancado.";
+"run.boot.elapsed" = "Transcurrido: %@";
+"run.boot.details" = "Más (monitor de arranque · registro)";
+"run.console.title" = "Consola de la VM (monitor de arranque)";
+"run.starting" = "Iniciando el sandbox…";
+"run.ended.title" = "Sandbox finalizado";
+"run.ended.discarded" = "Se descartaron todos los cambios del entorno desechable.";
+"run.startNew" = "Iniciar nuevo sandbox";
+"run.loadWSB" = "Configuración (.wsb)…";
+"run.wsb.panel" = "Seleccione un archivo de configuración de sandbox (.wsb)";
+
+/* VM console */
+"console.hint.focused" = "Consola con foco: las pulsaciones de teclas van al invitado. Haga clic en la pantalla para enviar un clic en esa posición.";
+"console.hint.unfocused" = "Haga clic en la pantalla para enfocar; las pulsaciones de teclas irán al invitado.";
+"console.waitingFrame" = "Esperando la pantalla…";
+"console.connecting" = "Conectando a la VM…";
+"console.connected" = "Conectado";
+"console.standby" = "En espera";
+
+/* Quit / close confirmation */
+"quit.title" = "¿Detener el sandbox?";
+"quit.message.close" = "Al cerrar la ventana se detiene el sandbox desechable en ejecución y se descartan todos los cambios.";
+"quit.message.quit" = "El sandbox desechable en ejecución se detendrá y se descartarán todos los cambios.";
+"quit.confirm" = "Detener";
+
+/* Baseline admin (rebuild / destroy) */
+"admin.rebuild.title" = "¿Reconstruir la línea base?";
+"admin.rebuild.message" = "Una nueva instalación desatendida reemplaza la imagen base actual. Si hay un sandbox en ejecución, se detiene primero y sus cambios se descartan.";
+"admin.rebuild.confirm" = "Reconstruir";
+"admin.destroy.title" = "¿Destruir la imagen base?";
+"admin.destroy.message" = "El disco de la línea base y sus metadatos se eliminan de forma permanente. Deberá crear una nueva línea base antes de volver a usar el sandbox. Si hay un sandbox en ejecución, se detiene primero.";
+"admin.destroy.confirm" = "Destruir";
+"ended.rebuild" = "Reconstruir línea base…";
+"ended.destroy" = "Destruir imagen base…";
+
+/* Errors */
+"error.qemuNotFound" = "No se encontró qemu-system-aarch64. Compruebe el paquete vendor/qemu.";
+"error.firmwareNotFound" = "No se encontró el firmware UEFI (edk2-aarch64-code.fd / edk2-arm-vars.fd).";
+"error.qemuImgNotFound" = "No se encontró qemu-img. Compruebe el paquete vendor/qemu.";
+"error.diskOp" = "Error en la operación de disco: %@";
+"error.wsbUnreadable" = "No se puede leer el archivo de configuración: %@";
+
+/* Options dialog */
+"options.tab.sandbox" = "Sandbox";
+"options.tab.io" = "Entrada y salida";
+"options.sandbox.note" = "Valores predeterminados para nuevos sandboxes. Un archivo .wsb o los modificadores de línea de comandos tienen prioridad sobre estos ajustes. Se aplican desde el próximo inicio del sandbox.";
+"options.memory" = "Memoria";
+"options.cpus" = "Núcleos de CPU";
+"options.networking" = "Red (NAT)";
+"options.clipboard" = "Compartir portapapeles";
+"options.audioInput" = "Compartir micrófono";
+"options.printer" = "Redirección de impresoras";
+"options.vgpu" = "Consola de arranque vGPU (virtio-gpu)";
+"options.kbdLayout" = "Distribución de teclado";
+"options.kbd.auto" = "Automática (idioma del sistema)";
+"options.kbd.us" = "Inglés (EE. UU., 101/102 teclas)";
+"options.kbd.korean" = "Coreano (101 teclas, tipo A)";
+"options.kbd.japanese" = "Japonés (106 teclas)";
+"options.kbd.note" = "Con la distribución coreana, la tecla Opción derecha alterna coreano/inglés (한/영) dentro del sandbox y Control derecha es Hanja. Se aplica en la próxima conexión.";
+"options.audioPlayback" = "Reproducir el audio del sandbox en este Mac";
+"options.hidpi" = "Pantalla HiDPI (Retina)";
+"options.io.note" = "Se aplica en la próxima conexión RDP (próximo inicio del sandbox).";
+
+/* About dialog */
+"about.menu" = "Acerca de macSandbox for Windows";
+"about.windowTitle" = "Información";
+"about.version" = "Versión %@";
+"about.tagline" = "Sandbox desechable de Windows 11 ARM64 para Mac con Apple Silicon — QEMU + Hypervisor.framework con vista RDP integrada.";
+"about.license.title" = "Licencia";
+"about.license.body" = "Doble licencia: GNU AGPL v3.0 o posterior, o una licencia comercial. Consulte LICENSING.md para más detalles.";
+"about.thirdparty.title" = "Componentes de terceros";
+"about.thirdparty.body" = "QEMU (GPLv2), FreeRDP (Apache-2.0), wimlib (LGPLv3), controladores virtio-win, firmware UEFI EDK2. Consulte THIRD-PARTY-NOTICES.md.";
+"about.viewLicenses" = "Ver documentos de licencia";
+
+/* License checklist (shown before every baseline build) */
+"license.title" = "Confirmación de licencias de Windows";
+"license.intro" = "Confirme cada punto antes de crear una imagen base de Windows. Esta app solo automatiza la instalación: todas las obligaciones de licencia de Windows siguen siendo suyas.";
+"license.item.noOS" = "Esta app no incluye Windows, ninguna clave de producto ni derechos de uso. El sistema operativo Windows y su licencia no los proporciona este software.";
+"license.item.ownLicense" = "Obtuve la ISO de Windows 11 ARM64 seleccionada a través de canales oficiales de Microsoft y poseo una licencia o derecho válido para esta instalación.";
+"license.item.vmRights" = "Entiendo que una licencia de Windows cubre una instancia en un dispositivo —físico o virtual— y que las licencias OEM suelen estar vinculadas al PC original y pueden no ser utilizables en una máquina virtual.";
+"license.item.personalUse" = "Con una licencia minorista personal, usaré este sandbox solo en mi propio dispositivo y red doméstica. El uso como escritorio virtual en organizaciones puede requerir licencias adicionales (p. ej., VDA o Microsoft 365 E3 o superior).";
+"license.item.eula" = "Soy el único responsable de cumplir los Términos de licencia del software de Microsoft (EULA), incluidos los requisitos de activación.";
+"license.footer" = "macSandbox for Windows es un proyecto independiente, sin afiliación ni respaldo de Microsoft. Windows es una marca del grupo de empresas Microsoft. Esta lista es informativa y no constituye asesoramiento legal.";
+"license.confirm" = "Aceptar e iniciar la compilación";
+
+/* General (language) */
+"options.tab.general" = "General";
+"options.language" = "Idioma";
+"options.lang.auto" = "Automático (seguir ajuste del sistema)";
+"options.language.note" = "Se aplica la próxima vez que se inicie la app.";
+
+/* Preflight */
+"error.lowDiskSpace" = "No hay suficiente espacio libre en disco para crear la línea base: %1$@ disponibles, se requieren aproximadamente %2$@.";

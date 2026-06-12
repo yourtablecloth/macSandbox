@@ -1,9 +1,9 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //
 // Copyright (C) 2026 Nam Jung Hyun (rkttu) <rkttu.official@gmail.com>
 //
 // This file is part of MacSandbox, which is dual-licensed:
-//   (1) under the GNU General Public License v3.0 or later (see LICENSE), or
+//   (1) under the GNU Affero General Public License v3.0 or later (see LICENSE), or
 //   (2) under a commercial license (see COMMERCIAL-LICENSE.md).
 // You may use this file under the terms of either license.
 //
@@ -27,7 +27,7 @@ enum WSBConfig {
         case unreadable(String)
         var errorDescription: String? {
             switch self {
-            case .unreadable(let r): return "구성 파일을 읽을 수 없습니다: \(r)"
+            case .unreadable(let r): return L("error.wsbUnreadable", r)
             }
         }
     }
@@ -39,7 +39,7 @@ enum WSBConfig {
             throw WSBError.unreadable(url.path)
         }
         guard let doc = try? XMLDocument(data: data, options: []) else {
-            throw WSBError.unreadable("XML 파싱 실패: \(url.lastPathComponent)")
+            throw WSBError.unreadable("XML parse failed: \(url.lastPathComponent)")
         }
         return parse(doc: doc)
     }
@@ -99,19 +99,19 @@ enum WSBConfig {
     /// 사람이 읽는 한 줄 요약 (UI/로그용)
     static func summaryLines(_ c: SandboxConfig) -> [(String, String)] {
         var rows: [(String, String)] = [
-            ("메모리", "\(c.memoryMB) MB"),
-            ("CPU 코어", "\(c.cpuCores)"),
-            ("네트워킹", c.networkingEnabled ? "켜짐" : "꺼짐"),
-            ("클립보드", c.clipboardEnabled ? "켜짐" : "꺼짐"),
-            ("오디오/마이크", c.audioInputEnabled ? "켜짐" : "꺼짐"),
-            ("프린터", c.printerEnabled ? "켜짐" : "꺼짐"),
-            ("vGPU(콘솔)", c.vGpuEnabled ? "virtio-gpu" : "ramfb"),
+            ("Memory", "\(c.memoryMB) MB"),
+            ("CPU cores", "\(c.cpuCores)"),
+            ("Networking", c.networkingEnabled ? "on" : "off"),
+            ("Clipboard", c.clipboardEnabled ? "on" : "off"),
+            ("Audio/microphone", c.audioInputEnabled ? "on" : "off"),
+            ("Printer", c.printerEnabled ? "on" : "off"),
+            ("vGPU (console)", c.vGpuEnabled ? "virtio-gpu" : "ramfb"),
         ]
         if !c.mappedFolders.isEmpty {
-            rows.append(("공유 폴더", c.mappedFolders.map { ($0.hostPath as NSString).lastPathComponent }.joined(separator: ", ")))
+            rows.append(("Shared folders", c.mappedFolders.map { ($0.hostPath as NSString).lastPathComponent }.joined(separator: ", ")))
         }
         if !c.logonCommand.isEmpty {
-            rows.append(("로그온 명령", c.logonCommand))
+            rows.append(("Logon command", c.logonCommand))
         }
         return rows
     }

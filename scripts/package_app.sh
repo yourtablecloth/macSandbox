@@ -1,5 +1,5 @@
 #!/bin/bash
-# MacSandbox를 배포용 .app + .dmg로 패키징한다.
+# macSandbox for Windows를 배포용 .app + .dmg로 패키징한다.
 #
 #   ad-hoc(로컬 테스트):  scripts/package_app.sh
 #   배포(서명+공증):       DEVELOPER_ID="Developer ID Application: NAME (TEAMID)" \
@@ -10,7 +10,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-APP_NAME="MacSandbox"
+APP_NAME="macSandbox for Windows"        # 제품/번들 표시 이름 (.app, DMG 볼륨)
+EXEC_NAME="MacSandbox"                   # SwiftPM 실행 파일 이름 (내부 고정)
 BUNDLE_ID="${BUNDLE_ID:-com.rkttu.macsandbox}"
 VERSION="${VERSION:-1.0.0}"
 IDENTITY="${DEVELOPER_ID:--}"            # 기본 ad-hoc("-")
@@ -22,28 +23,36 @@ sign() { codesign --force --timestamp --options runtime -s "$IDENTITY" "$@"; }
 
 echo "▶ 1/8 릴리스 빌드"
 swift build -c release
-BIN=".build/release/$APP_NAME"
+BIN=".build/release/$EXEC_NAME"
 
 echo "▶ 2/8 .app 골격 생성"
 rm -rf "$APP"; mkdir -p "$C/MacOS" "$C/Resources" "$C/Frameworks"
-cp "$BIN" "$C/MacOS/$APP_NAME"
+cp "$BIN" "$C/MacOS/$EXEC_NAME"
+# SwiftPM 리소스 번들(로컬라이제이션 .lproj) — Bundle.module이 Resources에서 탐색
+RES_BUNDLE=".build/release/${EXEC_NAME}_${EXEC_NAME}.bundle"
+[ -d "$RES_BUNDLE" ] && cp -R "$RES_BUNDLE" "$C/Resources/"
 
 echo "▶ 3/8 Info.plist"
 cat > "$C/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-  <key>CFBundleName</key><string>$APP_NAME</string>
+  <key>CFBundleName</key><string>macSandbox</string>
   <key>CFBundleDisplayName</key><string>$APP_NAME</string>
   <key>CFBundleIdentifier</key><string>$BUNDLE_ID</string>
   <key>CFBundleVersion</key><string>$VERSION</string>
   <key>CFBundleShortVersionString</key><string>$VERSION</string>
-  <key>CFBundleExecutable</key><string>$APP_NAME</string>
+  <key>CFBundleExecutable</key><string>$EXEC_NAME</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>LSApplicationCategoryType</key><string>public.app-category.utilities</string>
-  <key>NSMicrophoneUsageDescription</key><string>샌드박스에 마이크를 공유하기 위해 사용됩니다.</string>
+  <key>CFBundleDevelopmentRegion</key><string>en</string>
+  <key>CFBundleLocalizations</key><array>
+    <string>en</string><string>ko</string><string>ja</string>
+    <string>de</string><string>es</string><string>fr</string>
+  </array>
+  <key>NSMicrophoneUsageDescription</key><string>Used to share the microphone with the sandbox.</string>
 </dict></plist>
 PLIST
 
@@ -67,7 +76,7 @@ else
 fi
 
 echo "▶ 5/8 FreeRDP dylib 번들 + @rpath 수정"
-python3 scripts/bundle_dylibs.py "$C/MacOS/$APP_NAME" "$C/Frameworks" --add-rpath @executable_path/../Frameworks
+python3 scripts/bundle_dylibs.py "$C/MacOS/$EXEC_NAME" "$C/Frameworks" --add-rpath @executable_path/../Frameworks
 
 echo "▶ 6/8 라이선스/고지 동봉(GPL 컴플라이언스)"
 for f in LICENSE THIRD-PARTY-NOTICES.md WRITTEN-OFFER.txt LICENSING.md; do
@@ -86,13 +95,13 @@ sign --entitlements "$ENT_QEMU" "$C/Resources/vendor/qemu/bin/qemu-system-aarch6
 find "$C/Resources/vendor/qemu/bin" -type f -perm -111 ! -name 'qemu-system-aarch64' \
   -exec codesign --force --timestamp --options runtime --entitlements "$ENT_APP" -s "$IDENTITY" {} + 2>/dev/null || true
 # (5) 메인 실행파일 → 앱 번들(마지막)
-sign --entitlements "$ENT_APP" "$C/MacOS/$APP_NAME"
+sign --entitlements "$ENT_APP" "$C/MacOS/$EXEC_NAME"
 sign --entitlements "$ENT_APP" "$APP"
 codesign --verify --strict --verbose=1 "$APP" && echo "  서명 검증 OK"
 
 echo "▶ 8/8 DMG 생성"
 STAGE="$(mktemp -d)"; cp -R "$APP" "$STAGE/"; ln -s /Applications "$STAGE/Applications"
-DMG="$DIST/$APP_NAME-$VERSION.dmg"
+DMG="$DIST/macSandbox-for-Windows-$VERSION.dmg"
 hdiutil create -volname "$APP_NAME" -srcfolder "$STAGE" -ov -format UDZO "$DMG" >/dev/null
 rm -rf "$STAGE"
 [ "$IDENTITY" != "-" ] && codesign --force --timestamp -s "$IDENTITY" "$DMG"

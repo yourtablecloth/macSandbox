@@ -1,0 +1,160 @@
+/* macSandbox for Windows — 한국어 */
+
+/* Common */
+"common.cancel" = "취소";
+"common.log" = "로그";
+"common.log.empty" = "(아직 출력 없음)";
+
+/* Menu */
+"menu.sandbox" = "샌드박스";
+"menu.stop" = "샌드박스 종료";
+"menu.rebuild" = "베이스라인 재구축…";
+"menu.destroy" = "베이스 이미지 파기…";
+
+/* Build view */
+"build.header.title" = "베이스라인 구축";
+"build.header.desc" = "샌드박스를 사용하려면 베이스라인이 필요합니다. 준비한 Windows 11 ARM64 ISO로 무인 설치를 1-round 실행해 베이스라인 이미지를 만듭니다 (QEMU + HVF). 완료되면 샌드박스가 자동으로 시작됩니다.";
+"build.baseline.current" = "현재 베이스라인: %@ — %@";
+"baseline.status.creating" = "생성 중";
+"baseline.status.ready" = "준비됨";
+"baseline.status.error" = "오류";
+"build.iso.title" = "설치 미디어 (Windows 11 ARM64 ISO)";
+"build.iso.none" = "선택 안 됨";
+"build.iso.choose" = "ISO 선택…";
+"build.iso.missing" = "파일을 찾을 수 없습니다.";
+"build.iso.panel" = "Windows 11 ARM64 ISO 파일을 선택하세요";
+"build.edition.title" = "Windows 에디션 (install.wim)";
+"build.edition.loading" = "ISO에서 에디션 목록 읽는 중…";
+"build.edition.selectISOFirst" = "먼저 ISO를 선택하세요.";
+"build.edition.failed" = "에디션을 읽지 못했습니다 (wimlib 설치 필요).";
+"build.edition.picker" = "설치할 에디션";
+"build.edition.defaults" = "기본값으로 빌드합니다: 디스크 256GB · 8코어 · 16GB (표준 맥북 에어 사양).";
+"build.action.build" = "베이스라인 빌드";
+"build.action.inProgress" = "설치 진행 중…";
+"build.console.title" = "VM 콘솔 (모니터링 · 개입)";
+"build.returnToSandbox" = "샌드박스로 돌아가기";
+
+/* Build phases */
+"phase.idle" = "대기";
+"phase.preparingDisk" = "디스크 생성";
+"phase.preparingFirmware" = "UEFI 펌웨어 준비";
+"phase.generatingUnattend" = "무인 설치 미디어 생성";
+"phase.installing" = "Windows 무인 설치 진행 중";
+"phase.finalizing" = "베이스라인 마무리";
+"phase.completed" = "완료";
+"phase.failed" = "실패: %@";
+
+/* Build details */
+"build.detail.cleanup" = "기존 베이스라인 정리 중…";
+"build.detail.disk" = "%dGB qcow2 디스크 생성 중…";
+"build.detail.firmware" = "UEFI 펌웨어 확인 중…";
+"build.detail.media" = "WinPE 배포 매체 생성 중 (boot.wim 편집 + GPT 디스크)…";
+"build.detail.drivers" = "virtio-win 드라이버 준비 중…";
+"build.detail.phase1" = "Phase 1/2: WinPE에서 Windows 배포 중 (DISM /Apply-Image)…";
+"build.detail.phase2" = "Phase 2/2: Windows 첫 부팅 구성 중 (OOBE)…";
+"build.detail.finalize" = "베이스라인 마무리 중…";
+"build.detail.done" = "베이스라인 생성 완료!";
+
+/* Sandbox run states */
+"run.state.idle" = "대기";
+"run.state.preparing" = "샌드박스 디스크 준비 중…";
+"run.state.booting" = "샌드박스 부팅 중 (인앱 RDP 연결 대기)";
+"run.state.ended" = "종료됨";
+"run.state.failed" = "실패: %@";
+"run.state.noBaseline" = "사용 가능한 베이스라인이 없습니다.";
+
+/* Sandbox run view */
+"run.boot.title" = "샌드박스 부팅 중";
+"run.boot.hint" = "Windows 부팅 후 인앱 화면에 RDP가 연결됩니다.";
+"run.boot.elapsed" = "경과: %@";
+"run.boot.details" = "더 보기 (부팅 모니터·로그)";
+"run.console.title" = "VM 콘솔 (부팅 모니터)";
+"run.starting" = "샌드박스를 시작합니다…";
+"run.ended.title" = "샌드박스 종료됨";
+"run.ended.discarded" = "일회용 환경의 변경사항은 모두 폐기되었습니다.";
+"run.startNew" = "새 샌드박스 시작";
+"run.loadWSB" = "구성(.wsb)…";
+"run.wsb.panel" = "샌드박스 구성(.wsb) 파일을 선택하세요";
+
+/* VM console */
+"console.hint.focused" = "콘솔 포커스됨 — 키보드 입력이 게스트로 전달됩니다. 화면을 클릭하면 해당 위치로 클릭이 전달됩니다.";
+"console.hint.unfocused" = "화면을 클릭해 포커스하면 키보드 입력이 게스트로 전달됩니다.";
+"console.waitingFrame" = "화면 수신 대기 중…";
+"console.connecting" = "VM 연결 중…";
+"console.connected" = "연결됨";
+"console.standby" = "대기";
+
+/* Quit / close confirmation */
+"quit.title" = "샌드박스를 종료할까요?";
+"quit.message.close" = "창을 닫으면 실행 중인 일회용 샌드박스가 종료되고, 변경사항은 모두 폐기됩니다.";
+"quit.message.quit" = "실행 중인 일회용 샌드박스가 종료되고, 변경사항은 모두 폐기됩니다.";
+"quit.confirm" = "종료";
+
+/* Baseline admin (rebuild / destroy) */
+"admin.rebuild.title" = "베이스라인을 재구축할까요?";
+"admin.rebuild.message" = "새 무인 설치가 현재 베이스 이미지를 교체합니다. 샌드박스가 실행 중이면 먼저 종료되고 변경사항은 폐기됩니다.";
+"admin.rebuild.confirm" = "재구축";
+"admin.destroy.title" = "베이스 이미지를 파기할까요?";
+"admin.destroy.message" = "베이스라인 디스크와 메타데이터가 영구 삭제됩니다. 샌드박스를 다시 사용하려면 베이스라인을 새로 빌드해야 합니다. 샌드박스가 실행 중이면 먼저 종료됩니다.";
+"admin.destroy.confirm" = "파기";
+"ended.rebuild" = "베이스라인 재구축…";
+"ended.destroy" = "베이스 이미지 파기…";
+
+/* Errors */
+"error.qemuNotFound" = "qemu-system-aarch64를 찾을 수 없습니다. vendor/qemu 번들을 확인하세요.";
+"error.firmwareNotFound" = "UEFI 펌웨어(edk2-aarch64-code.fd / edk2-arm-vars.fd)를 찾을 수 없습니다.";
+"error.qemuImgNotFound" = "qemu-img를 찾을 수 없습니다. vendor/qemu 번들을 확인하세요.";
+"error.diskOp" = "디스크 작업 실패: %@";
+"error.wsbUnreadable" = "구성 파일을 읽을 수 없습니다: %@";
+
+/* Options dialog */
+"options.tab.sandbox" = "샌드박스";
+"options.tab.io" = "입력·출력";
+"options.sandbox.note" = "새 샌드박스의 기본 구성입니다. .wsb 파일이나 커맨드라인 스위치가 이 설정보다 우선합니다. 다음 샌드박스 시작부터 적용됩니다.";
+"options.memory" = "메모리";
+"options.cpus" = "CPU 코어";
+"options.networking" = "네트워킹 (NAT)";
+"options.clipboard" = "클립보드 공유";
+"options.audioInput" = "마이크 공유";
+"options.printer" = "프린터 리다이렉션";
+"options.vgpu" = "vGPU 부팅 콘솔 (virtio-gpu)";
+"options.kbdLayout" = "키보드 레이아웃";
+"options.kbd.auto" = "자동 (시스템 언어)";
+"options.kbd.us" = "영어 (US, 101/102키)";
+"options.kbd.korean" = "한국어 (101키 Type A)";
+"options.kbd.japanese" = "일본어 (106키)";
+"options.kbd.note" = "한국어 레이아웃에서는 샌드박스 안에서 오른쪽 Option이 한/영 전환, 오른쪽 Control이 한자 키로 동작합니다. 다음 연결부터 적용됩니다.";
+"options.audioPlayback" = "샌드박스 오디오를 이 Mac에서 재생";
+"options.hidpi" = "HiDPI (Retina) 디스플레이";
+"options.io.note" = "다음 RDP 연결(다음 샌드박스 시작)부터 적용됩니다.";
+
+/* About dialog */
+"about.menu" = "macSandbox for Windows 정보";
+"about.windowTitle" = "정보";
+"about.version" = "버전 %@";
+"about.tagline" = "Apple Silicon Mac을 위한 일회용 Windows 11 ARM64 샌드박스 — QEMU + Hypervisor.framework, 인앱 RDP 화면.";
+"about.license.title" = "라이선스";
+"about.license.body" = "이중 라이선스: GNU AGPL v3.0 이상 또는 상용 라이선스. 자세한 내용은 LICENSING.md를 참고하세요.";
+"about.thirdparty.title" = "서드파티 구성요소";
+"about.thirdparty.body" = "QEMU (GPLv2), FreeRDP (Apache-2.0), wimlib (LGPLv3), virtio-win 드라이버, EDK2 UEFI 펌웨어. THIRD-PARTY-NOTICES.md를 참고하세요.";
+"about.viewLicenses" = "라이선스 문서 보기";
+
+/* License checklist (shown before every baseline build) */
+"license.title" = "Windows 라이선스 확인";
+"license.intro" = "Windows 베이스 이미지를 만들기 전에 아래 항목을 확인해 주세요. 이 앱은 설치를 자동화할 뿐이며, Windows 라이선스에 대한 모든 의무는 사용자에게 있습니다.";
+"license.item.noOS" = "이 앱에는 Windows, 제품 키, 사용권이 포함되어 있지 않습니다. Windows OS와 그 라이선스는 이 소프트웨어가 제공하지 않습니다.";
+"license.item.ownLicense" = "선택한 Windows 11 ARM64 ISO는 Microsoft 공식 경로에서 받았으며, 이 설치에 사용할 적법한 라이선스(사용 권한)를 보유하고 있습니다.";
+"license.item.vmRights" = "Windows 라이선스 1개는 물리·가상을 불문하고 장치 1대의 인스턴스 1개에만 적용되며, OEM 라이선스는 일반적으로 원래 PC에 귀속되어 VM에 사용할 수 없음을 이해합니다.";
+"license.item.personalUse" = "개인 소매(리테일) 라이선스라면 이 샌드박스를 내 기기와 가정 네트워크 범위에서만 사용합니다. 회사·조직의 가상 데스크톱 용도는 별도 라이선스(VDA, Microsoft 365 E3 이상 등)가 필요할 수 있습니다.";
+"license.item.eula" = "정품 인증 요구사항을 포함해 Microsoft 소프트웨어 사용 조건(EULA)을 준수할 책임은 전적으로 나에게 있습니다.";
+"license.footer" = "macSandbox for Windows는 Microsoft와 무관한 독립 프로젝트이며 Microsoft의 보증을 받지 않았습니다. Windows는 Microsoft 그룹의 상표입니다. 이 체크리스트는 안내용이며 법률 자문이 아닙니다.";
+"license.confirm" = "동의하고 빌드 시작";
+
+/* General (language) */
+"options.tab.general" = "일반";
+"options.language" = "언어";
+"options.lang.auto" = "자동 (시스템 설정 따름)";
+"options.language.note" = "앱을 다시 실행하면 적용됩니다.";
+
+/* Preflight */
+"error.lowDiskSpace" = "베이스라인을 빌드할 디스크 여유 공간이 부족합니다: 사용 가능 %1$@, 약 %2$@ 필요.";

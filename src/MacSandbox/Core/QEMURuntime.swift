@@ -1,9 +1,9 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //
 // Copyright (C) 2026 Nam Jung Hyun (rkttu) <rkttu.official@gmail.com>
 //
 // This file is part of MacSandbox, which is dual-licensed:
-//   (1) under the GNU General Public License v3.0 or later (see LICENSE), or
+//   (1) under the GNU Affero General Public License v3.0 or later (see LICENSE), or
 //   (2) under a commercial license (see COMMERCIAL-LICENSE.md).
 // You may use this file under the terms of either license.
 //
@@ -29,9 +29,9 @@ final class QEMURuntime {
         var errorDescription: String? {
             switch self {
             case .qemuNotFound:
-                return "qemu-system-aarch64를 찾을 수 없습니다. vendor/qemu 번들을 확인하세요."
+                return L("error.qemuNotFound")
             case .firmwareNotFound:
-                return "UEFI 펌웨어(edk2-aarch64-code.fd / edk2-arm-vars.fd)를 찾을 수 없습니다."
+                return L("error.firmwareNotFound")
             }
         }
     }
@@ -264,7 +264,7 @@ final class QEMURuntime {
                 guard let self else { return }
                 let p = self.currentProcess()
                 if p?.isRunning ?? false {
-                    onOutput("설치 타임아웃(\(Int(timeoutSeconds))초) 초과 — VM 강제 종료\n")
+                    onOutput("Install timeout (\(Int(timeoutSeconds))s) exceeded — forcing VM off\n")
                     p?.terminate()
                 }
             }
@@ -283,7 +283,7 @@ final class QEMURuntime {
 
             do {
                 try proc.run()
-                onOutput("QEMU 프로세스 시작됨 (PID \(proc.processIdentifier))\n")
+                onOutput("QEMU process started (PID \(proc.processIdentifier))\n")
                 spawnWatchdog(qemuPID: proc.processIdentifier)  // 앱 강제종료 시 VM orphan 방지
             } catch {
                 timeout.cancel()

@@ -1,9 +1,9 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //
 // Copyright (C) 2026 Nam Jung Hyun (rkttu) <rkttu.official@gmail.com>
 //
 // This file is part of MacSandbox, which is dual-licensed:
-//   (1) under the GNU General Public License v3.0 or later (see LICENSE), or
+//   (1) under the GNU Affero General Public License v3.0 or later (see LICENSE), or
 //   (2) under a commercial license (see COMMERCIAL-LICENSE.md).
 // You may use this file under the terms of either license.
 //
@@ -28,12 +28,12 @@ enum GuestDrivers {
         if fm.fileExists(atPath: dest.path),
            let size = (try? fm.attributesOfItem(atPath: dest.path))?[.size] as? Int64,
            size > 100_000_000 {
-            onLog("virtio-win.iso 캐시 사용 (\(size / 1_000_000)MB)")
+            onLog("Using cached virtio-win.iso (\(size / 1_000_000)MB)")
             return dest.path
         }
 
         try fm.createDirectory(at: SandboxPaths.driversDir, withIntermediateDirectories: true)
-        onLog("virtio-win.iso 다운로드 중 (~700MB)...")
+        onLog("Downloading virtio-win.iso (~700MB)...")
 
         let tmp = dest.path + ".part"
         let process = Process()
@@ -47,11 +47,11 @@ enum GuestDrivers {
 
         guard process.terminationStatus == 0, fm.fileExists(atPath: tmp) else {
             let d = err.fileHandleForReading.readDataToEndOfFile()
-            throw BuildError.installFailed("virtio-win.iso 다운로드 실패: \(String(data: d, encoding: .utf8) ?? "")")
+            throw BuildError.installFailed("virtio-win.iso download failed: \(String(data: d, encoding: .utf8) ?? "")")
         }
         if fm.fileExists(atPath: dest.path) { try? fm.removeItem(atPath: dest.path) }
         try fm.moveItem(atPath: tmp, toPath: dest.path)
-        onLog("virtio-win.iso 준비 완료")
+        onLog("virtio-win.iso ready")
         return dest.path
     }
 }

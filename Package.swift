@@ -9,6 +9,7 @@ let brewLib = "/opt/homebrew/lib"
 
 let package = Package(
     name: "MacSandbox",
+    defaultLocalization: "en",
     platforms: [
         .macOS(.v14)
     ],
@@ -31,6 +32,9 @@ let package = Package(
             name: "MacSandbox",
             dependencies: ["CFreeRDP"],
             path: "src/MacSandbox",
+            resources: [
+                .process("Resources")
+            ],
             linkerSettings: [
                 .unsafeFlags([
                     "-L\(brewLib)",

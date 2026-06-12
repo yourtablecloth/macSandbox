@@ -1,9 +1,9 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //
 // Copyright (C) 2026 Nam Jung Hyun (rkttu) <rkttu.official@gmail.com>
 //
 // This file is part of MacSandbox, which is dual-licensed:
-//   (1) under the GNU General Public License v3.0 or later (see LICENSE), or
+//   (1) under the GNU Affero General Public License v3.0 or later (see LICENSE), or
 //   (2) under a commercial license (see COMMERCIAL-LICENSE.md).
 // You may use this file under the terms of either license.
 //
@@ -85,9 +85,7 @@ struct VMConsoleView: View {
         VStack(spacing: 8) {
             screen
             helperBar
-            Text(focused
-                 ? "콘솔 포커스됨 — 키보드 입력이 게스트로 전달됩니다. 화면을 클릭하면 해당 위치로 클릭이 전달됩니다."
-                 : "화면을 클릭해 포커스하면 키보드 입력이 게스트로 전달됩니다.")
+            Text(focused ? L("console.hint.focused") : L("console.hint.unfocused"))
                 .font(.caption2).foregroundStyle(.secondary)
         }
     }
@@ -104,7 +102,7 @@ struct VMConsoleView: View {
                 } else {
                     VStack(spacing: 8) {
                         ProgressView().tint(.white)
-                        Text(console.isConnected ? "화면 수신 대기 중..." : "VM 연결 중...")
+                        Text(console.isConnected ? L("console.waitingFrame") : L("console.connecting"))
                             .font(.caption).foregroundStyle(.white.opacity(0.7))
                     }
                 }
@@ -152,7 +150,8 @@ struct VMConsoleView: View {
             Circle()
                 .fill(console.isConnected ? Color.green : Color.orange)
                 .frame(width: 8, height: 8)
-            Text(console.isConnected ? "연결됨" : "대기").font(.caption2).foregroundStyle(.secondary)
+            Text(console.isConnected ? L("console.connected") : L("console.standby"))
+                .font(.caption2).foregroundStyle(.secondary)
         }
     }
 

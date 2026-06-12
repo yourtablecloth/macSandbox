@@ -1,9 +1,9 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //
 // Copyright (C) 2026 Nam Jung Hyun (rkttu) <rkttu.official@gmail.com>
 //
 // This file is part of MacSandbox, which is dual-licensed:
-//   (1) under the GNU General Public License v3.0 or later (see LICENSE), or
+//   (1) under the GNU Affero General Public License v3.0 or later (see LICENSE), or
 //   (2) under a commercial license (see COMMERCIAL-LICENSE.md).
 // You may use this file under the terms of either license.
 //
@@ -31,6 +31,7 @@ final class VMConsole: ObservableObject {
 
     // qmpQueue 전용 상태
     private var running = false
+    private var lastFrameData: Data?
 
     init(socketPath: String, capturesFrames: Bool) {
         self.injector = QMPInputInjector(socketPath: socketPath)
@@ -84,15 +85,18 @@ final class VMConsole: ObservableObject {
     private func tick() {
         guard running else { return }
 
-        // 화면 캡처 → 게시
+        // 화면 캡처 → 게시. 직전 프레임과 같으면 게시를 생략해
+        // 정적 화면(부팅 단계 등)에서 불필요한 뷰 재렌더를 막는다.
         if capturesFrames {
             injector.screendump(to: framePath)
             if let data = try? Data(contentsOf: URL(fileURLWithPath: framePath)),
+               data != lastFrameData,
                let image = NSImage(data: data) {
+                lastFrameData = data
                 DispatchQueue.main.async { [weak self] in self?.frame = image }
             }
         }
 
-        qmpQueue.asyncAfter(deadline: .now() + 0.6) { [weak self] in self?.tick() }
+        qmpQueue.asyncAfter(deadline: .now() + 0.4) { [weak self] in self?.tick() }
     }
 }
