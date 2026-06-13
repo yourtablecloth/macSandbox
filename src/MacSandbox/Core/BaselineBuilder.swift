@@ -65,8 +65,11 @@ final class BaselineBuilder: ObservableObject {
         defer { isRunning = false }
 
         // 백그라운드 단계(미디어 빌드/다운로드)가 메인 액터로 로그를 넘기는 공용 싱크.
+        // weak self를 지역 let으로 스냅샷한 뒤 Task로 넘긴다(가변 약참조를 동시성 클로저에서
+        // 직접 참조하면 일부 Swift 버전이 에러로 처리 — @MainActor 클래스라 Optional도 Sendable).
         let logSink: @Sendable (String) -> Void = { [weak self] msg in
-            Task { @MainActor in self?.appendLog(msg) }
+            let me = self
+            Task { @MainActor in me?.appendLog(msg) }
         }
 
         do {
@@ -215,7 +218,8 @@ final class BaselineBuilder: ObservableObject {
         let exit = try await runtime.runUntilExit(
             arguments: args, qmpSocketPath: qmpSocket, timeoutSeconds: installTimeout
         ) { [weak self] out in
-            Task { @MainActor in self?.appendLog(out) }
+            let me = self
+            Task { @MainActor in me?.appendLog(out) }
         }
         console.stop()
         self.console = nil

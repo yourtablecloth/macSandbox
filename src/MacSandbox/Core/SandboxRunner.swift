@@ -136,7 +136,8 @@ final class SandboxRunner: ObservableObject {
                 try await self.runtime.runUntilExit(
                     arguments: args, qmpSocketPath: qmpSocket, timeoutSeconds: 24 * 60 * 60
                 ) { [weak self] out in
-                    Task { @MainActor in self?.appendLog(out) }
+                    let me = self
+                    Task { @MainActor in me?.appendLog(out) }
                 }
             }
 
