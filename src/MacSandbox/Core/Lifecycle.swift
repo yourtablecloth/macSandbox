@@ -63,6 +63,13 @@ final class SandboxAppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    // Finder에서 `.wsb`를 더블클릭/드롭(파일 연결)하면 호출된다. 런치와 동시에 올 수도 있어
+    // 코디네이터에 위임만 하고(파싱/시작/오류 표시는 ContentView가 관찰해 처리), 런치 시점
+    // 호출이면 ContentView 첫 갱신이 explicitConfig로 곧바로 시작한다.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        MainActor.assumeIsolated { OpenWSB.shared.open(urls) }
+    }
+
     // 단일 창을 닫으면 앱도 종료(아래 applicationShouldTerminate에서 확인 다이얼로그).
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 

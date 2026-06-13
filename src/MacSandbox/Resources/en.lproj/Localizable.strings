@@ -158,3 +158,8 @@
 
 /* Preflight */
 "error.lowDiskSpace" = "Not enough free disk space to build the baseline: %1$@ available, about %2$@ required.";
+
+/* Help menu + .wsb open */
+"menu.help" = "macSandbox for Windows Help";
+"common.ok" = "OK";
+"wsb.error.title" = "Couldn’t open the configuration";

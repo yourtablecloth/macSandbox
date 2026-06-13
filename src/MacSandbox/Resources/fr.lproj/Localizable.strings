@@ -158,3 +158,8 @@
 
 /* Preflight */
 "error.lowDiskSpace" = "Espace disque libre insuffisant pour construire la base : %1$@ disponible, environ %2$@ requis.";
+
+/* Help menu + .wsb open */
+"menu.help" = "Aide de macSandbox for Windows";
+"common.ok" = "OK";
+"wsb.error.title" = "Impossible d’ouvrir la configuration";

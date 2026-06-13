@@ -158,3 +158,8 @@
 
 /* Preflight */
 "error.lowDiskSpace" = "No hay suficiente espacio libre en disco para crear la línea base: %1$@ disponibles, se requieren aproximadamente %2$@.";
+
+/* Help menu + .wsb open */
+"menu.help" = "Ayuda de macSandbox for Windows";
+"common.ok" = "Aceptar";
+"wsb.error.title" = "No se pudo abrir la configuración";

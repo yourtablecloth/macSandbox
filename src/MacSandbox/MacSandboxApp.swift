@@ -12,6 +12,7 @@
 // FITNESS FOR A PARTICULAR PURPOSE.
 
 import SwiftUI
+import AppKit
 import CFreeRDP
 
 /// 진입점.
@@ -123,6 +124,12 @@ struct MacSandboxGUIApp: App {
         .commands {
             CommandGroup(replacing: .newItem) { }   // "새 창" 제거(단일 창 제약)
             CommandGroup(replacing: .appInfo) { AboutMenuItem() }   // 커스텀 '앱 정보' 창
+            CommandGroup(replacing: .help) {        // 기본 도움말 → 온라인 도움말(GitHub Pages)
+                Button(L("menu.help")) {
+                    if let url = URL(string: HelpLinks.help) { NSWorkspace.shared.open(url) }
+                }
+                .keyboardShortcut("?", modifiers: [.command])
+            }
             CommandMenu(L("menu.sandbox")) {
                 Button(L("menu.stop")) { runner.stop() }
                     .keyboardShortcut(".", modifiers: [.command])

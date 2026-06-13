@@ -158,3 +158,8 @@
 
 /* Preflight */
 "error.lowDiskSpace" = "베이스라인을 빌드할 디스크 여유 공간이 부족합니다: 사용 가능 %1$@, 약 %2$@ 필요.";
+
+/* Help menu + .wsb open */
+"menu.help" = "macSandbox for Windows 도움말";
+"common.ok" = "확인";
+"wsb.error.title" = "구성 파일을 열 수 없습니다";

@@ -64,8 +64,9 @@ swift build && .build/debug/MacSandbox
 Requirements: Apple Silicon Mac, macOS 14+, your own licensed Windows 11
 ARM64 ISO, ~24 GB free disk space for the one-time baseline build.
 
-See the [README](https://github.com/yourtablecloth/macSandbox#readme) for packaging
-(`scripts/package_app.sh`), command-line switches, and the
+See the [Help guide](help/) for day-to-day usage, the
+[README](https://github.com/yourtablecloth/macSandbox#readme) for packaging
+(`scripts/package_app.sh`) and command-line switches, and the
 [architecture guide](https://github.com/yourtablecloth/macSandbox/blob/main/ARCHITECTURE.md).
 
 ## Licensing

@@ -20,11 +20,13 @@ import UniformTypeIdentifiers
 struct ContentView: View {
     @ObservedObject var runner: SandboxRunner   // 앱(App) 소유 — 메뉴 커맨드와 공유
     @ObservedObject var admin: BaselineAdmin    // 앱(App) 소유 — 재구축/파기 메뉴와 공유
+    @ObservedObject private var openWSB = OpenWSB.shared   // .wsb 파일 열기(연결/버튼) 통지
     @StateObject private var builder = BaselineBuilder()
     @State private var baselineReady = false
     @State private var config: SandboxConfig = AppLaunch.shared.effectiveConfig()
     @State private var didAutoStart = false
     @State private var closeGuard = CloseGuard()
+    @State private var wsbError: String?
 
     var body: some View {
         Group {
@@ -39,9 +41,18 @@ struct ContentView: View {
             // 창 닫기 시 확인 다이얼로그(VM과 함께 종료)
             window?.delegate = closeGuard
         })
+        .alert(L("wsb.error.title"), isPresented: Binding(
+            get: { wsbError != nil }, set: { if !$0 { wsbError = nil } })
+        ) {
+            Button(L("common.ok")) { wsbError = nil }
+        } message: {
+            Text(wsbError ?? "")
+        }
         .onAppear {
             AppHooks.shared.runner = runner   // 앱/창 종료 훅이 참조
             refresh()
+            // 런치 시점에 `.wsb`를 열었다가 파싱 실패한 경우 오류를 표시(성공이면 refresh가 시작).
+            if let err = openWSB.errorMessage { wsbError = err }
         }
         .onChange(of: builder.phase) { _, p in
             if p == .completed {
@@ -59,18 +70,31 @@ struct ContentView: View {
             // 임베드 RDP 뷰는 앱 창 안에서 렌더하므로 창을 내리지 않는다. 종료 시에만 갱신.
             if !running { refresh() }
         }
+        .onChange(of: openWSB.token) { _, _ in handleOpenWSB() }
     }
 
     /// 베이스라인이 준비돼 있으면 곧바로 샌드박스를 시작한다(최초 1회). 없으면 빌드 화면.
+    /// 시작 구성은 effectiveConfig() — `.wsb`/CLI 명시 구성이 있으면 그것, 없으면 옵션 기본값.
     private func refresh() {
         baselineReady = runner.hasBaseline()
-        // 명시 구성(.wsb/CLI)이 없으면 옵션 변경이 다음 시작부터 반영되도록 매번 재산출.
-        if !runner.isRunning, AppLaunch.shared.explicitConfig == nil {
-            config = AppOptions.makeDefaultConfig()
+        if !runner.isRunning {
+            config = AppLaunch.shared.effectiveConfig()
         }
         if baselineReady, !admin.rebuildMode, !didAutoStart, !runner.isRunning {
             didAutoStart = true
             Task { await runner.start(config: config) }
+        }
+    }
+
+    /// 실행 중(런타임)에 `.wsb`를 열었을 때: 파싱 실패면 오류, 성공이면 곧바로 새 샌드박스 시작
+    /// (미실행 시). 베이스라인이 없거나 재구축 중이면 구성만 반영해 빌드 완료 후 자동 시작한다.
+    /// 이미 실행 중이면 현재 세션을 지키고 구성만 갱신(다음 시작에 반영).
+    private func handleOpenWSB() {
+        if let err = openWSB.errorMessage { wsbError = err; return }
+        guard let cfg = openWSB.pendingConfig else { return }
+        config = cfg
+        if baselineReady, !admin.rebuildMode, !runner.isRunning {
+            Task { await runner.start(config: cfg) }
         }
     }
 }

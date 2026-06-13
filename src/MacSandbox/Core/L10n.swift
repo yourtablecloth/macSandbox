@@ -18,6 +18,11 @@ enum Brand {
     static let appName = "macSandbox for Windows"
 }
 
+/// 외부 링크 (도움말 등). GitHub Pages 사이트에 호스팅.
+enum HelpLinks {
+    static let help = "https://yourtablecloth.github.io/macSandbox/help/"
+}
+
 /// 앱 표시 언어 옵션 — '자동(시스템 설정)'이 기본이며, 명시 선택 시 해당 언어로 고정.
 enum AppLanguage: String, CaseIterable, Identifiable {
     case auto, en, ko, ja, de, es, fr

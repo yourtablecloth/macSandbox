@@ -67,6 +67,26 @@ cat > "$C/Info.plist" <<PLIST
     <string>de</string><string>es</string><string>fr</string>
   </array>
   <key>NSMicrophoneUsageDescription</key><string>Used to share the microphone with the sandbox.</string>
+  <key>CFBundleDocumentTypes</key><array>
+    <dict>
+      <key>CFBundleTypeName</key><string>Windows Sandbox Configuration</string>
+      <key>CFBundleTypeRole</key><string>Viewer</string>
+      <key>LSHandlerRank</key><string>Owner</string>
+      <key>LSItemContentTypes</key><array><string>$BUNDLE_ID.wsb</string></array>
+      <key>CFBundleTypeExtensions</key><array><string>wsb</string></array>
+    </dict>
+  </array>
+  <key>UTExportedTypeDeclarations</key><array>
+    <dict>
+      <key>UTTypeIdentifier</key><string>$BUNDLE_ID.wsb</string>
+      <key>UTTypeDescription</key><string>Windows Sandbox Configuration</string>
+      <key>UTTypeConformsTo</key><array><string>public.xml</string></array>
+      <key>UTTypeTagSpecification</key>
+      <dict>
+        <key>public.filename-extension</key><array><string>wsb</string></array>
+      </dict>
+    </dict>
+  </array>
 </dict></plist>
 PLIST
 

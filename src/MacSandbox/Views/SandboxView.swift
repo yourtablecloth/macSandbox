@@ -177,10 +177,10 @@ struct SandboxView: View {
             panel.allowedContentTypes = [wsbType, .xml]
         }
         panel.message = L("run.wsb.panel")
-        if panel.runModal() == .OK, let url = panel.url,
-           let parsed = try? WSBConfig.load(path: url.path) {
-            config = parsed
-            AppLaunch.shared.markExplicit(parsed)   // 옵션 기본값 대신 이 구성 유지
+        if panel.runModal() == .OK, let url = panel.url {
+            // Finder 파일 연결과 동일 경로 — 파싱 성공 시 ContentView가 곧바로 새 샌드박스를
+            // 시작하고, 실패 시 오류를 표시한다.
+            OpenWSB.shared.open([url])
         }
     }
 }

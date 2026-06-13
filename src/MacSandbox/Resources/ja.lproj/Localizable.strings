@@ -158,3 +158,8 @@
 
 /* Preflight */
 "error.lowDiskSpace" = "ベースラインのビルドに必要なディスクの空き容量が不足しています: 使用可能 %1$@、約 %2$@ が必要です。";
+
+/* Help menu + .wsb open */
+"menu.help" = "macSandbox for Windows ヘルプ";
+"common.ok" = "OK";
+"wsb.error.title" = "構成ファイルを開けませんでした";
