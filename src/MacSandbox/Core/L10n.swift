@@ -39,24 +39,46 @@ enum AppLanguage: String, CaseIterable, Identifiable {
 
 /// 로컬라이제이션 해석기.
 ///
-/// `Bundle.module.localizedString`의 언어 선택은 **메인 번들이 선언한 로컬라이제이션**에
-/// 제약된다 — bare 실행 파일(swift run)이나 CFBundleLocalizations가 없는 .app에서는
-/// 시스템 언어가 한국어여도 개발 언어(en)로 떨어진다. 그래서 여기서는 직접
-/// `Locale.preferredLanguages`(또는 옵션의 명시 언어)를 리소스 번들의 가용 언어와 매칭해
-/// 해당 `.lproj` 번들을 로드한다. 언어 옵션 변경은 앱 재시작 후 적용(시작 시 1회 해석).
+/// 두 가지 이유로 `Bundle.module`을 쓰지 않고 리소스 번들을 직접 찾는다:
+/// 1. `Bundle.module.localizedString`의 언어 선택은 메인 번들이 선언한 로컬라이제이션에
+///    제약돼, 시스템이 한국어여도 개발 언어(en)로 떨어진다 → 직접 `.lproj`를 로드해 우회.
+/// 2. SwiftPM이 생성하는 `Bundle.module` 접근자는 리소스 번들을 `Bundle.main.bundleURL`
+///    (= .app 루트) 또는 **빌드 시점의 절대 .build 경로**에서 찾고, 못 찾으면 `fatalError`다.
+///    수동 패키징한 .app은 번들을 `Contents/Resources/`에 두므로 접근자가 못 찾고, 폴백
+///    .build 경로는 빌드한 개발 머신에만 존재한다 → **배포본을 다른 머신에서 실행하면 즉시
+///    크래시**. 그래서 `Contents/Resources`·실행파일 디렉토리를 직접 탐색하고, 실패해도
+///    `Bundle.main`으로 폴백(크래시 없음)한다.
+/// 언어 옵션 변경은 앱 재시작 후 적용(시작 시 1회 해석).
 private final class L10nStore {
     static let shared = L10nStore()
     let bundle: Bundle
 
     private init() {
+        let base = Self.resourceBundle()
         let code = Self.resolvedCode()
         if code != "en",
-           let path = Bundle.module.path(forResource: code, ofType: "lproj"),
+           let path = base.path(forResource: code, ofType: "lproj"),
            let lproj = Bundle(path: path) {
             bundle = lproj
         } else {
-            bundle = .module   // en(개발 언어) — 모듈 기본 조회로 충분
+            bundle = base   // en(기본) 또는 번들 탐색 실패 시 폴백
         }
+    }
+
+    /// SwiftPM 리소스 번들(`MacSandbox_MacSandbox.bundle`)을 직접 찾는다.
+    /// .app(Contents/Resources)·CLI/swift run(실행파일 디렉토리)·번들 루트를 순서대로 탐색하고,
+    /// 어디서도 못 찾으면 메인 번들로 폴백한다(절대 fatalError 하지 않음).
+    private static func resourceBundle() -> Bundle {
+        let name = "MacSandbox_MacSandbox.bundle"
+        let candidates: [URL?] = [
+            Bundle.main.resourceURL,                                  // .app/Contents/Resources
+            Bundle.main.bundleURL,                                    // .app 루트 / CLI 디렉토리
+            Bundle.main.executableURL?.deletingLastPathComponent(),  // swift run 실행파일 디렉토리
+        ]
+        for case let dir? in candidates {
+            if let b = Bundle(url: dir.appendingPathComponent(name)) { return b }
+        }
+        return .main
     }
 
     private static func resolvedCode() -> String {

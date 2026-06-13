@@ -36,9 +36,15 @@ BIN=".build/release/$EXEC_NAME"
 echo "▶ 2/8 .app 골격 생성"
 rm -rf "$APP"; mkdir -p "$C/MacOS" "$C/Resources" "$C/Frameworks"
 cp "$BIN" "$C/MacOS/$EXEC_NAME"
-# SwiftPM 리소스 번들(로컬라이제이션 .lproj) — Bundle.module이 Resources에서 탐색
+# SwiftPM 리소스 번들(로컬라이제이션 .lproj)을 Contents/Resources에 넣는다.
+# L10nStore가 Bundle.main.resourceURL(= Contents/Resources)에서 직접 찾으므로 위치가 중요.
+# 누락되면 UI가 키 문자열로 표시되거나(폴백) 빈약해지므로 없으면 빌드를 실패시킨다.
 RES_BUNDLE=".build/release/${EXEC_NAME}_${EXEC_NAME}.bundle"
-[ -d "$RES_BUNDLE" ] && cp -R "$RES_BUNDLE" "$C/Resources/"
+if [ ! -d "$RES_BUNDLE" ]; then
+  echo "  ❌ 리소스 번들 없음: $RES_BUNDLE (로컬라이제이션 .lproj). swift build -c release 산출물 확인" >&2
+  exit 1
+fi
+cp -R "$RES_BUNDLE" "$C/Resources/"
 
 echo "▶ 3/8 Info.plist"
 cat > "$C/Info.plist" <<PLIST
