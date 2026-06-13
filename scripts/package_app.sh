@@ -1,12 +1,20 @@
 #!/bin/bash
 # macSandbox for Windows를 배포용 .app + .dmg로 패키징한다.
 #
-#   ad-hoc(로컬 테스트):  scripts/package_app.sh
-#   배포(서명+공증):       DEVELOPER_ID="Developer ID Application: NAME (TEAMID)" \
-#                          NOTARY_PROFILE="<notarytool 키체인 프로파일>" \
+#   ad-hoc(로컬/CI 기본):  scripts/package_app.sh
+#                          → DEVELOPER_ID 미지정 시 ad-hoc("-") 서명, 공증 생략.
+#
+#   배포(서명):            DEVELOPER_ID="Developer ID Application: NAME (TEAMID)" \
 #                          scripts/package_app.sh
 #
-# 전제: macOS, Xcode CLT, brew(wimlib/freerdp 설치됨), vendor/qemu 준비(scripts/build.sh).
+#   배포(서명+공증):       위에 더해 아래 중 한 방식의 공증 자격증명을 지정하면
+#                          DMG를 자동으로 공증(notarize) + 스테이플(staple)한다.
+#     A) 로컬(키체인 프로파일):  NOTARY_PROFILE="<notarytool store-credentials 프로파일>"
+#     B) CI(앱 전용 암호):       NOTARY_APPLE_ID, NOTARY_TEAM_ID, NOTARY_PASSWORD
+#
+# 즉 서명/공증은 "환경 변수만 추가하면" 켜진다(코드 변경 불필요).
+#
+# 전제: macOS, Xcode CLT, brew(wimlib/freerdp 설치됨), vendor/qemu 준비(scripts/bundle_qemu.py).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -106,17 +114,33 @@ hdiutil create -volname "$APP_NAME" -srcfolder "$STAGE" -ov -format UDZO "$DMG" 
 rm -rf "$STAGE"
 [ "$IDENTITY" != "-" ] && codesign --force --timestamp -s "$IDENTITY" "$DMG"
 
+# ── 공증(notarization) — 자격증명이 주어졌을 때만 자동 수행 ─────────────────
+# Developer ID로 서명됐고(ad-hoc 아님) NOTARY_* 자격증명이 있으면 DMG를 공증 + 스테이플.
+# 미지정 시 조용히 건너뛴다(ad-hoc/미공증 DMG는 그대로 산출됨).
+NOTARIZED=0
+if [ "$IDENTITY" != "-" ]; then
+  if [ -n "${NOTARY_PROFILE:-}" ]; then
+    echo "▶ 공증 (notarytool · keychain-profile)"
+    xcrun notarytool submit "$DMG" --keychain-profile "$NOTARY_PROFILE" --wait
+    xcrun stapler staple "$DMG"; NOTARIZED=1
+  elif [ -n "${NOTARY_APPLE_ID:-}" ] && [ -n "${NOTARY_TEAM_ID:-}" ] && [ -n "${NOTARY_PASSWORD:-}" ]; then
+    echo "▶ 공증 (notarytool · apple-id)"
+    xcrun notarytool submit "$DMG" --apple-id "$NOTARY_APPLE_ID" --team-id "$NOTARY_TEAM_ID" \
+      --password "$NOTARY_PASSWORD" --wait
+    xcrun stapler staple "$DMG"; NOTARIZED=1
+  fi
+fi
+
 echo ""
 echo "✅ 완료:"
 echo "   앱: $APP"
 echo "   DMG: $DMG  ($(du -h "$DMG" | cut -f1))"
 if [ "$IDENTITY" = "-" ]; then
-  echo ""
-  echo "ℹ️ ad-hoc 서명입니다(로컬 실행용). 배포하려면:"
-  echo "   1) Apple Developer 가입 → 'Developer ID Application' 인증서 발급"
-  echo "   2) DEVELOPER_ID=\"Developer ID Application: NAME (TEAMID)\" scripts/package_app.sh"
-  echo "   3) 공증(notarize):"
-  echo "      xcrun notarytool store-credentials <프로파일> --apple-id <id> --team-id <TEAMID> --password <앱암호>"
-  echo "      xcrun notarytool submit \"$DMG\" --keychain-profile <프로파일> --wait"
-  echo "      xcrun stapler staple \"$DMG\"  (그리고 .app에도 staple 후 DMG 재생성 권장)"
+  echo "   서명: ad-hoc (로컬/테스트용 — 배포하려면 DEVELOPER_ID 지정)"
+elif [ "$NOTARIZED" = "1" ]; then
+  echo "   서명: $IDENTITY"
+  echo "   공증: 완료 + 스테이플됨 (Gatekeeper 통과, 배포 가능)"
+else
+  echo "   서명: $IDENTITY"
+  echo "   공증: 생략 (NOTARY_PROFILE 또는 NOTARY_APPLE_ID/TEAM_ID/PASSWORD 지정 시 자동 공증)"
 fi

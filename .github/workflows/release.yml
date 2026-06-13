@@ -1,0 +1,100 @@
+name: Release DMG
+
+# DMG 패키징 자동화.
+# - 기본(시크릿 없음): ad-hoc 서명 DMG를 빌드해 아티팩트로 업로드.
+# - 시크릿이 있으면 그대로 Developer ID 서명(+공증)까지 자동 적용(코드 변경 불필요).
+#   서명:  MACOS_CERT_P12(base64 .p12), MACOS_CERT_PASSWORD, MACOS_DEVELOPER_ID
+#   공증:  NOTARY_APPLE_ID, NOTARY_TEAM_ID, NOTARY_PASSWORD(앱 전용 암호)
+# - 태그(v*) 푸시 시 GitHub Release를 만들고 DMG를 자산으로 첨부.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version (예: 1.0.0). 비우면 0.0.0-dev"
+        required: false
+
+permissions:
+  contents: write   # gh release 생성/자산 업로드
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    # Apple Silicon(arm64) 표준 러너 — public 저장소에서 무료.
+    # arm64_sonoma 보틀(scripts/qemu-bottles.lock.json) 및 LSMinimumSystemVersion 14.0과 일치.
+    runs-on: macos-14
+    env:
+      # 서명(있으면 Developer ID, 없으면 ad-hoc)
+      MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+      MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+      MACOS_DEVELOPER_ID: ${{ secrets.MACOS_DEVELOPER_ID }}
+      # 공증(있으면 notarize+staple) — package_app.sh가 이 변수들을 직접 읽는다
+      NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
+      NOTARY_TEAM_ID: ${{ secrets.NOTARY_TEAM_ID }}
+      NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: ver
+        run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            V="${GITHUB_REF_NAME#v}"
+          else
+            V="${{ github.event.inputs.version }}"
+          fi
+          [ -n "$V" ] || V="0.0.0-dev"
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "Building version $V"
+
+      - name: Install build dependencies (FreeRDP, wimlib)
+        run: brew install freerdp wimlib
+
+      - name: Bundle vendor QEMU
+        run: python3 scripts/bundle_qemu.py --force --fallback-brew
+
+      - name: Import signing certificate
+        if: env.MACOS_CERT_P12 != ''
+        env:
+          KEYCHAIN_PATH: ${{ runner.temp }}/build.keychain-db
+        run: |
+          KEYCHAIN_PW="$(uuidgen)"
+          security create-keychain -p "$KEYCHAIN_PW" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PW" "$KEYCHAIN_PATH"
+          echo "$MACOS_CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN_PATH" \
+            -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PW" "$KEYCHAIN_PATH" >/dev/null
+          # 빌드 키체인을 검색 목록 맨 앞에 추가(기존 항목 유지)
+          security list-keychains -d user -s "$KEYCHAIN_PATH" \
+            $(security list-keychains -d user | sed 's/[”"]//g')
+          rm -f "$RUNNER_TEMP/cert.p12"
+
+      - name: Build & package DMG
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+          DEVELOPER_ID: ${{ env.MACOS_DEVELOPER_ID }}   # 비어 있으면 package_app.sh가 ad-hoc 사용
+        run: scripts/package_app.sh
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macSandbox-for-Windows-${{ steps.ver.outputs.version }}
+          path: dist/*.dmg
+          if-no-files-found: error
+
+      - name: Attach DMG to GitHub Release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/*.dmg \
+            --title "$GITHUB_REF_NAME" --generate-notes \
+          || gh release upload "$GITHUB_REF_NAME" dist/*.dmg --clobber
