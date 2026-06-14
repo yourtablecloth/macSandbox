@@ -46,6 +46,20 @@ if [ ! -d "$RES_BUNDLE" ]; then
 fi
 cp -R "$RES_BUNDLE" "$C/Resources/"
 
+# 앱 아이콘 — assets/AppIcon.png(1024²)에서 .icns 생성(재생성: swift scripts/make_assets.swift)
+ICON_SRC="assets/AppIcon.png"
+if [ -f "$ICON_SRC" ]; then
+  ICONSET="$(mktemp -d)/AppIcon.iconset"; mkdir -p "$ICONSET"
+  for s in 16 32 128 256 512; do
+    sips -z "$s" "$s"           "$ICON_SRC" --out "$ICONSET/icon_${s}x${s}.png"    >/dev/null 2>&1
+    sips -z "$((s*2))" "$((s*2))" "$ICON_SRC" --out "$ICONSET/icon_${s}x${s}@2x.png" >/dev/null 2>&1
+  done
+  iconutil -c icns "$ICONSET" -o "$C/Resources/AppIcon.icns" && echo "  아이콘: AppIcon.icns 생성"
+  rm -rf "$(dirname "$ICONSET")"
+else
+  echo "  ⚠️ $ICON_SRC 없음 — 아이콘 생략(generic). 'swift scripts/make_assets.swift'로 생성"
+fi
+
 echo "▶ 3/8 Info.plist"
 cat > "$C/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -61,6 +75,8 @@ cat > "$C/Info.plist" <<PLIST
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>LSApplicationCategoryType</key><string>public.app-category.utilities</string>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
+  <key>CFBundleIconName</key><string>AppIcon</string>
   <key>CFBundleDevelopmentRegion</key><string>en</string>
   <key>CFBundleLocalizations</key><array>
     <string>en</string><string>ko</string><string>ja</string>
@@ -133,11 +149,59 @@ sign --entitlements "$ENT_APP" "$C/MacOS/$EXEC_NAME"
 sign --entitlements "$ENT_APP" "$APP"
 codesign --verify --strict --verbose=1 "$APP" && echo "  서명 검증 OK"
 
-echo "▶ 8/8 DMG 생성"
-STAGE="$(mktemp -d)"; cp -R "$APP" "$STAGE/"; ln -s /Applications "$STAGE/Applications"
+echo "▶ 8/8 DMG 생성 (배경/배치 스타일링)"
 DMG="$DIST/macSandbox-for-Windows-$VERSION.dmg"
-hdiutil create -volname "$APP_NAME" -srcfolder "$STAGE" -ov -format UDZO "$DMG" >/dev/null
+VOLNAME="$APP_NAME"
+STAGE="$(mktemp -d)"
+cp -R "$APP" "$STAGE/"
+ln -s /Applications "$STAGE/Applications"
+BG_SRC="assets/dmg-background.png"
+[ -f "$BG_SRC" ] && { mkdir -p "$STAGE/.background"; cp "$BG_SRC" "$STAGE/.background/background.png"; }
+
+# 읽기/쓰기 DMG로 만들어 Finder로 꾸민 뒤(배경·아이콘 위치) 압축 포맷으로 변환한다.
+RW="$DIST/.rw-$VERSION.dmg"; rm -f "$RW"
+hdiutil detach "/Volumes/$VOLNAME" >/dev/null 2>&1 || true
+hdiutil create -volname "$VOLNAME" -srcfolder "$STAGE" -fs HFS+ -format UDRW -ov "$RW" >/dev/null
 rm -rf "$STAGE"
+DEV="$(hdiutil attach -readwrite -noverify -noautoopen "$RW" | grep -oE '^/dev/disk[0-9]+' | head -1)"
+sleep 1
+
+style_dmg() {   # Finder 자동화(헤드리스/권한 미허용 시 실패 가능) — 타임아웃으로 보호
+  osascript <<OSA
+tell application "Finder"
+  tell disk "$VOLNAME"
+    open
+    set current view of container window to icon view
+    set toolbar visible of container window to false
+    set statusbar visible of container window to false
+    set the bounds of container window to {300, 160, 960, 588}
+    set vopts to the icon view options of container window
+    set arrangement of vopts to not arranged
+    set icon size of vopts to 112
+    set text size of vopts to 12
+    set background picture of vopts to file ".background:background.png"
+    set position of item "$APP_NAME.app" of container window to {172, 218}
+    set position of item "Applications" of container window to {488, 218}
+    update without registering applications
+    delay 1
+    close
+  end tell
+end tell
+OSA
+}
+STYLED=0
+if [ -f "$BG_SRC" ]; then
+  ( style_dmg >/dev/null 2>&1 ) & SP=$!
+  ( sleep 40; kill "$SP" 2>/dev/null ) & WP=$!
+  if wait "$SP" 2>/dev/null; then STYLED=1; echo "  스타일링 적용됨"; else echo "  ⚠️ Finder 자동화 불가 — 기본 레이아웃으로 진행"; fi
+  kill "$WP" 2>/dev/null || true
+fi
+sync
+hdiutil detach "$DEV" >/dev/null 2>&1 || { sleep 2; hdiutil detach -force "$DEV" >/dev/null 2>&1 || true; }
+
+rm -f "$DMG"
+hdiutil convert "$RW" -format UDZO -imagekey zlib-level=9 -o "$DMG" >/dev/null
+rm -f "$RW"
 [ "$IDENTITY" != "-" ] && codesign --force --timestamp -s "$IDENTITY" "$DMG"
 
 # ── 공증(notarization) — 자격증명이 주어졌을 때만 자동 수행 ─────────────────
