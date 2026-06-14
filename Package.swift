@@ -33,7 +33,8 @@ let package = Package(
             dependencies: ["CFreeRDP"],
             path: "src/MacSandbox",
             resources: [
-                .process("Resources")
+                .process("Resources"),    // .lproj 로컬라이제이션(Localizable.strings)
+                .copy("Terms")            // 언어별 약관 마크다운(Terms/<lang>.md) — 빌드 시 번들에 동봉
             ],
             linkerSettings: [
                 .unsafeFlags([

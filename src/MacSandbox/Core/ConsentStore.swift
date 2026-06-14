@@ -35,7 +35,8 @@ enum ConsentStore {
     static var needsConsent: Bool { agreedVersion != currentVersion }
 
     /// 현재 언어의 약관 마크다운(없으면 nil — UI는 폴백 안내를 표시).
-    static func termsMarkdown() -> String? { localizedMarkdown("Terms") }
+    /// 본문은 `Terms/<lang>.md`로 번들링(`.lproj`의 UI 문자열과 분리, Package.swift `.copy("Terms")`).
+    static func termsMarkdown() -> String? { bundledMarkdown(inSubdirectory: "Terms") }
 
     /// 동의 기록 — UserDefaults + 감사 로그 파일.
     static func recordAgreement() {

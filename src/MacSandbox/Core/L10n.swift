@@ -72,21 +72,16 @@ private final class L10nStore {
         }
     }
 
-    /// `<name>.md` 리소스를 [현재 해석 언어, en] 순으로 읽는다(둘 다 없으면 nil).
-    static func markdown(_ name: String) -> String? {
+    /// 번들 하위 폴더(`subdir`)에서 `<lang>.md`를 [현재 해석 언어, en] 순으로 읽는다(둘 다 없으면 nil).
+    /// 약관 등 언어별 마크다운은 `.lproj`(UI 문자열)와 분리된 전용 폴더(예: `Terms/`)에 두고
+    /// Package.swift의 `.copy`로 번들에 동봉된다.
+    static func markdown(inSubdirectory subdir: String) -> String? {
         let root = resourceBundle()
         for code in [shared.code, "en"] {
-            if let lprojPath = root.path(forResource: code, ofType: "lproj"),
-               let b = Bundle(path: lprojPath),
-               let url = b.url(forResource: name, withExtension: "md"),
+            if let url = root.url(forResource: code, withExtension: "md", subdirectory: subdir),
                let text = try? String(contentsOf: url, encoding: .utf8) {
                 return text
             }
-        }
-        // lproj 밖(번들 루트)에 직접 있는 경우 폴백
-        if let url = root.url(forResource: name, withExtension: "md"),
-           let text = try? String(contentsOf: url, encoding: .utf8) {
-            return text
         }
         return nil
     }
@@ -137,5 +132,5 @@ func L(_ key: String, _ args: CVarArg...) -> String {
 /// 현재 해석된 언어 코드 (감사 기록 등).
 func currentLanguageCode() -> String { L10nStore.shared.code }
 
-/// 현재 언어의 마크다운 리소스(`<name>.md`)를 읽는다(없으면 en, 그래도 없으면 nil).
-func localizedMarkdown(_ name: String) -> String? { L10nStore.markdown(name) }
+/// 번들 하위 폴더(`subdir`)의 언어별 마크다운(`<lang>.md`)을 현재 언어로 읽는다(없으면 en, 그래도 없으면 nil).
+func bundledMarkdown(inSubdirectory subdir: String) -> String? { L10nStore.markdown(inSubdirectory: subdir) }
