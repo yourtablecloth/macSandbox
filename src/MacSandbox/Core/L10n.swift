@@ -57,17 +57,38 @@ enum AppLanguage: String, CaseIterable, Identifiable {
 private final class L10nStore {
     static let shared = L10nStore()
     let bundle: Bundle
+    let code: String   // 해석된 언어 코드(en/ko/...) — 리소스 로드·감사 기록에 사용
 
     private init() {
         let base = Self.resourceBundle()
-        let code = Self.resolvedCode()
-        if code != "en",
-           let path = base.path(forResource: code, ofType: "lproj"),
+        let resolved = Self.resolvedCode()
+        self.code = resolved
+        if resolved != "en",
+           let path = base.path(forResource: resolved, ofType: "lproj"),
            let lproj = Bundle(path: path) {
             bundle = lproj
         } else {
             bundle = base   // en(기본) 또는 번들 탐색 실패 시 폴백
         }
+    }
+
+    /// `<name>.md` 리소스를 [현재 해석 언어, en] 순으로 읽는다(둘 다 없으면 nil).
+    static func markdown(_ name: String) -> String? {
+        let root = resourceBundle()
+        for code in [shared.code, "en"] {
+            if let lprojPath = root.path(forResource: code, ofType: "lproj"),
+               let b = Bundle(path: lprojPath),
+               let url = b.url(forResource: name, withExtension: "md"),
+               let text = try? String(contentsOf: url, encoding: .utf8) {
+                return text
+            }
+        }
+        // lproj 밖(번들 루트)에 직접 있는 경우 폴백
+        if let url = root.url(forResource: name, withExtension: "md"),
+           let text = try? String(contentsOf: url, encoding: .utf8) {
+            return text
+        }
+        return nil
     }
 
     /// SwiftPM 리소스 번들(`MacSandbox_MacSandbox.bundle`)을 직접 찾는다.
@@ -112,3 +133,9 @@ func L(_ key: String) -> String {
 func L(_ key: String, _ args: CVarArg...) -> String {
     String(format: L(key), locale: Locale.current, arguments: args)
 }
+
+/// 현재 해석된 언어 코드 (감사 기록 등).
+func currentLanguageCode() -> String { L10nStore.shared.code }
+
+/// 현재 언어의 마크다운 리소스(`<name>.md`)를 읽는다(없으면 en, 그래도 없으면 nil).
+func localizedMarkdown(_ name: String) -> String? { L10nStore.markdown(name) }

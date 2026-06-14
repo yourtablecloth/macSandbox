@@ -27,6 +27,7 @@ struct ContentView: View {
     @State private var didAutoStart = false
     @State private var closeGuard = CloseGuard()
     @State private var wsbError: String?
+    @State private var showConsent = ConsentStore.needsConsent
 
     var body: some View {
         Group {
@@ -48,11 +49,18 @@ struct ContentView: View {
         } message: {
             Text(wsbError ?? "")
         }
+        .sheet(isPresented: $showConsent) {
+            TermsConsentView {
+                ConsentStore.recordAgreement()   // 동의 버전·시점 기록(UserDefaults + 감사 로그)
+                showConsent = false
+                proceedAfterConsent()
+            }
+        }
         .onAppear {
             AppHooks.shared.runner = runner   // 앱/창 종료 훅이 참조
-            refresh()
-            // 런치 시점에 `.wsb`를 열었다가 파싱 실패한 경우 오류를 표시(성공이면 refresh가 시작).
-            if let err = openWSB.errorMessage { wsbError = err }
+            // 약관 동의 전엔 어떤 동작(샌드박스 자동 시작 등)도 하지 않는다.
+            guard !ConsentStore.needsConsent else { showConsent = true; return }
+            proceedAfterConsent()
         }
         .onChange(of: builder.phase) { _, p in
             if p == .completed {
@@ -73,9 +81,16 @@ struct ContentView: View {
         .onChange(of: openWSB.token) { _, _ in handleOpenWSB() }
     }
 
+    /// 약관 동의 후(또는 이미 동의된 상태) 정상 흐름 진입 — 자동 시작 + 런치 시 `.wsb` 오류 표시.
+    private func proceedAfterConsent() {
+        refresh()
+        if let err = openWSB.errorMessage { wsbError = err }
+    }
+
     /// 베이스라인이 준비돼 있으면 곧바로 샌드박스를 시작한다(최초 1회). 없으면 빌드 화면.
     /// 시작 구성은 effectiveConfig() — `.wsb`/CLI 명시 구성이 있으면 그것, 없으면 옵션 기본값.
     private func refresh() {
+        guard !ConsentStore.needsConsent else { return }   // 동의 전엔 자동 시작 금지
         baselineReady = runner.hasBaseline()
         if !runner.isRunning {
             config = AppLaunch.shared.effectiveConfig()
@@ -90,6 +105,7 @@ struct ContentView: View {
     /// (미실행 시). 베이스라인이 없거나 재구축 중이면 구성만 반영해 빌드 완료 후 자동 시작한다.
     /// 이미 실행 중이면 현재 세션을 지키고 구성만 갱신(다음 시작에 반영).
     private func handleOpenWSB() {
+        guard !ConsentStore.needsConsent else { return }   // 동의 후 proceedAfterConsent가 처리
         if let err = openWSB.errorMessage { wsbError = err; return }
         guard let cfg = openWSB.pendingConfig else { return }
         config = cfg

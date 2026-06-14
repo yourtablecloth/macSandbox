@@ -163,3 +163,11 @@
 "menu.help" = "Aide de macSandbox for Windows";
 "common.ok" = "OK";
 "wsb.error.title" = "Impossible d’ouvrir la configuration";
+
+/* Terms of Use consent */
+"consent.title" = "Conditions d’utilisation";
+"consent.version" = "Version %@";
+"consent.checkbox" = "J’ai lu et j’accepte les conditions d’utilisation.";
+"consent.continue" = "Accepter et continuer";
+"consent.quit" = "Quitter";
+"consent.unavailable" = "Impossible de charger les conditions d’utilisation. Veuillez réinstaller l’app.";

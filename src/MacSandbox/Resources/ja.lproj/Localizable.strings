@@ -163,3 +163,11 @@
 "menu.help" = "macSandbox for Windows ヘルプ";
 "common.ok" = "OK";
 "wsb.error.title" = "構成ファイルを開けませんでした";
+
+/* Terms of Use consent */
+"consent.title" = "利用規約";
+"consent.version" = "バージョン %@";
+"consent.checkbox" = "利用規約を読み、同意します。";
+"consent.continue" = "同意して続ける";
+"consent.quit" = "終了";
+"consent.unavailable" = "利用規約を読み込めませんでした。アプリを再インストールしてください。";
