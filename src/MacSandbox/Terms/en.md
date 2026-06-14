@@ -1,6 +1,6 @@
 # Terms of Use — macSandbox for Windows
 
-**Version 1.0** · Effective 2026-06-13
+**Version 1.1** · Effective 2026-06-14
 
 ## Before you use this Software — please read
 
@@ -56,6 +56,7 @@ By installing, building a Base Image with, running, or otherwise using the Softw
 **You are solely responsible for holding a valid license for every Guest OS instance you run, and for complying with all applicable license terms of that Guest OS.** In particular:
 
 - You must hold a valid Microsoft license appropriate to each Windows instance you build, run, or retain using the Software.
+- **The edition (SKU) you select is part of this.** Windows is offered in distinct editions (for example, Windows 11 Home and Pro) that are licensed separately. By selecting an edition in the Software, you represent that you hold a valid license for that specific edition; selecting an edition does not itself grant any license.
 - **Activation status is not a substitute for a license.** Whether a Windows instance is activated, unactivated, or displays an evaluation watermark does not, by itself, establish that you are properly licensed. Microsoft's terms tie authorization to holding a valid license, not to activation state.
 - Before each Base Image build, the Software presents a licensing checklist. **Your confirmation of that checklist is a representation that you have satisfied each item.** The Author does not verify, and cannot verify, your licensing status.
 

@@ -1,6 +1,6 @@
 # Términos de uso — macSandbox for Windows
 
-**Versión 1.0** · En vigor desde 2026-06-13
+**Versión 1.1** · En vigor desde 2026-06-14
 
 ## Antes de usar este software, léalo
 
@@ -56,6 +56,7 @@ Al instalar el Software, crear con él una Base Image, ejecutarlo o usarlo de cu
 **Usted es el único responsable de poseer una licencia válida para cada instancia de SO invitado que ejecute y de cumplir todos los términos de licencia aplicables de ese SO invitado.** En particular:
 
 - Debe poseer una licencia de Microsoft válida y adecuada para cada instancia de Windows que cree, ejecute o conserve con el Software.
+- **La edición (SKU) que seleccione forma parte de esto.** Windows se ofrece en ediciones distintas (por ejemplo, Windows 11 Home y Pro) que se licencian por separado. Al seleccionar una edición en el Software, usted declara que posee una licencia válida para esa edición concreta; seleccionar una edición no concede por sí mismo ninguna licencia.
 - **El estado de activación no sustituye a una licencia.** El hecho de que una instancia de Windows esté activada, no activada o muestre una marca de agua de evaluación no acredita por sí solo que usted disponga de la licencia correspondiente. Los términos de Microsoft vinculan la autorización a la posesión de una licencia válida, no al estado de activación.
 - Antes de cada creación de una Base Image, el Software muestra una lista de comprobación de licencia. **Su confirmación de dicha lista constituye una declaración de que ha cumplido cada punto.** El Autor no verifica, ni puede verificar, su situación de licencia.
 

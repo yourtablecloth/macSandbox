@@ -1,6 +1,6 @@
 # Conditions d'utilisation — macSandbox for Windows
 
-**Version 1.0** · En vigueur le 2026-06-13
+**Version 1.1** · En vigueur le 2026-06-14
 
 ## À lire avant d'utiliser ce logiciel
 
@@ -56,6 +56,7 @@ En installant le Logiciel, en créant une Base Image avec celui-ci, en l'exécut
 **Vous êtes seul responsable de détenir une licence valide pour chaque instance de SE invité que vous exécutez et de respecter toutes les conditions de licence applicables de ce SE invité.** En particulier :
 
 - Vous devez détenir une licence Microsoft valide et adaptée à chaque instance de Windows que vous créez, exécutez ou conservez à l'aide du Logiciel.
+- **L'édition (SKU) que vous sélectionnez en fait partie.** Windows est proposé en différentes éditions (par exemple, Windows 11 Home et Pro) qui sont concédées sous licence séparément. En sélectionnant une édition dans le Logiciel, vous déclarez détenir une licence valide pour cette édition précise ; la sélection d'une édition ne confère par elle-même aucune licence.
 - **L'état d'activation ne remplace pas une licence.** Le fait qu'une instance de Windows soit activée, non activée ou affiche un filigrane d'évaluation n'établit pas à lui seul que vous disposez d'une licence en bonne et due forme. Les conditions de Microsoft lient l'autorisation à la détention d'une licence valide, et non à l'état d'activation.
 - Avant chaque création d'une Base Image, le Logiciel affiche une liste de contrôle de licence. **Votre confirmation de cette liste constitue une déclaration selon laquelle vous avez satisfait à chaque point.** L'Auteur ne vérifie pas, et ne peut pas vérifier, votre situation de licence.
 

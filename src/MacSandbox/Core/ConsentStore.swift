@@ -20,14 +20,29 @@ extension Notification.Name {
 
 /// 사용 약관(Terms of Use) 동의 게이트 + 기록.
 ///
-/// - 약관 본문은 언어별 마크다운(`Terms.md`)으로 번들링되고, 버전은 `currentVersion`으로 고정한다.
+/// - 약관 본문은 언어별 마크다운(`Terms/<lang>.md`)으로 번들링된다. **현재 버전은 영어판
+///   (`Terms/en.md`)의 "Version X.Y" 표기에서 자동 추출**하므로, 약관을 개정할 때 마크다운의
+///   버전만 올리면 코드 수정 없이 기존 동의자에게 재동의를 받는다(버전 드리프트 방지).
 /// - 최초 실행(또는 약관 버전 상승) 시 동의가 필요하다(`needsConsent`).
 /// - 동의/철회 시: 버전·시점을 **UserDefaults**(게이트 판단용)와 **Application Support의
 ///   append-only 감사 로그**(durable 기록)에 남기고, 변경을 알린다(`.msbxConsentChanged`).
 /// - 옵션에서 **철회**(`withdraw`)하면 기록이 지워지고 즉시 동의 게이트가 다시 뜬다.
 enum ConsentStore {
-    /// 번들된 약관 본문(`Terms.md` 상단 표기)과 일치시켜야 한다. 약관을 바꾸면 올린다.
-    static let currentVersion = "1.0"
+    /// 현재 약관 버전 — 영어판 약관(`Terms/en.md`)의 "Version X.Y"에서 추출(파싱 실패 시 폴백).
+    /// 기존 동의자의 `agreedVersion`과 다르면 재동의를 받는다.
+    static let currentVersion: String = parsedTermsVersion() ?? fallbackVersion
+
+    /// 파싱 실패 시 사용할 버전 — 번들 약관의 현재 표기와 맞춰 둔다(파싱은 거의 항상 성공).
+    private static let fallbackVersion = "1.1"
+
+    /// `Terms/en.md`의 "Version 1.1" 같은 표기에서 버전 번호만 추출한다.
+    private static func parsedTermsVersion() -> String? {
+        guard let md = bundledMarkdown(inSubdirectory: "Terms", language: "en"),
+              let r = md.range(of: #"Version\s+[0-9]+(\.[0-9]+)*"#, options: .regularExpression)
+        else { return nil }
+        let v = md[r].replacingOccurrences(of: "Version", with: "").trimmingCharacters(in: .whitespaces)
+        return v.isEmpty ? nil : v
+    }
 
     private static let kVersion = "consent.termsVersion"
     private static let kDate = "consent.agreedAt"
