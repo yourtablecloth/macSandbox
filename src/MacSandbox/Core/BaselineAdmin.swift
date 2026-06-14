@@ -53,11 +53,27 @@ final class BaselineAdmin: ObservableObject {
                       destructive: true) else { return }
         busy = true
         Task { @MainActor in
-            await self.stopAndWait(runner: runner)
-            try? FileManager.default.removeItem(at: SandboxPaths.baselineDir)
-            self.rebuildMode = true   // 라우터 갱신 트리거(베이스라인이 없으니 빌드 화면)
+            await self.performDestroy(runner: runner)
             self.busy = false
         }
+    }
+
+    /// 약관 동의 철회: **확인 없이 즉시** 샌드박스를 정지하고 베이스 이미지를 삭제한다.
+    /// (철회 확인 단계에서 이미 이 파괴적 결과를 경고하므로 추가 확인을 받지 않는다.)
+    func destroyForConsentWithdrawal(runner: SandboxRunner) {
+        guard !busy else { return }
+        busy = true
+        Task { @MainActor in
+            await self.performDestroy(runner: runner)
+            self.busy = false
+        }
+    }
+
+    /// 정지 대기 + 베이스 이미지 삭제(공통). 호출자가 사용자 확인을 책임진다.
+    private func performDestroy(runner: SandboxRunner) async {
+        await stopAndWait(runner: runner)
+        try? FileManager.default.removeItem(at: SandboxPaths.baselineDir)
+        rebuildMode = true   // 라우터 갱신 트리거(베이스라인이 없으니 빌드 화면)
     }
 
     /// 빌드 완료/뒤로 가기 — 일반 라우팅(샌드박스 자동 시작)으로 복귀.

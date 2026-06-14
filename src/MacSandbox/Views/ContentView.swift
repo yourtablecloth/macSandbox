@@ -80,8 +80,15 @@ struct ContentView: View {
         }
         .onChange(of: openWSB.token) { _, _ in handleOpenWSB() }
         .onReceive(NotificationCenter.default.publisher(for: .msbxConsentChanged)) { _ in
-            // 옵션에서 약관 동의를 철회하면 즉시 게이트를 다시 표시(재동의 또는 종료 전까지 차단).
-            showConsent = ConsentStore.needsConsent
+            // 동의 철회 시: 실행 중 샌드박스 종료 + 베이스 이미지 삭제 + 게이트 재표시
+            // (재동의 시 베이스 이미지가 없으므로 빌드 화면으로 진입). 재동의(record)면 게이트만 내린다.
+            if ConsentStore.needsConsent {
+                didAutoStart = false
+                admin.destroyForConsentWithdrawal(runner: runner)
+                showConsent = true
+            } else {
+                showConsent = false
+            }
         }
     }
 

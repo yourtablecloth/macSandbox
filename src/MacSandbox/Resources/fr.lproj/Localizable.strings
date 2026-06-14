@@ -181,6 +181,6 @@
 "options.terms.notAgreed" = "Non accepté. Vous serez invité avant de continuer à utiliser l’app.";
 "options.terms.withdraw" = "Retirer le consentement…";
 "options.terms.withdraw.title" = "Retirer votre consentement ?";
-"options.terms.withdraw.message" = "Votre acceptation enregistrée sera effacée et vous devrez de nouveau accepter les conditions d’utilisation avant de continuer à utiliser l’app. Ce retrait est consigné.";
+"options.terms.withdraw.message" = "Avertissement : cela arrête aussi toute sandbox en cours et SUPPRIME DÉFINITIVEMENT l’image de base. Votre acceptation enregistrée est effacée ; pour réutiliser l’app, vous devrez reconstruire l’image de base et accepter de nouveau les conditions d’utilisation. Ce retrait est consigné.";
 "options.terms.withdraw.confirm" = "Retirer";
-"options.terms.note" = "Consultez les conditions d’utilisation ou retirez votre consentement. Le retrait réaffiche immédiatement l’écran d’acceptation.";
+"options.terms.note" = "Consultez les conditions d’utilisation ou retirez votre consentement. Le retrait arrête la sandbox en cours, supprime l’image de base et réaffiche l’écran d’acceptation.";

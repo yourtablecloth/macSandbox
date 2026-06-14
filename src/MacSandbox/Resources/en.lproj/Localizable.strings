@@ -181,6 +181,6 @@
 "options.terms.notAgreed" = "Not agreed. You will be asked before continuing to use the app.";
 "options.terms.withdraw" = "Withdraw Consent…";
 "options.terms.withdraw.title" = "Withdraw your consent?";
-"options.terms.withdraw.message" = "Your recorded agreement will be cleared and the Terms of Use must be accepted again before you can continue using the app. A record of this withdrawal is kept.";
+"options.terms.withdraw.message" = "Warning: this also stops any running sandbox and PERMANENTLY DELETES the base image. Your recorded agreement is cleared; to use the app again you must rebuild the base image and accept the Terms of Use once more. A record of this withdrawal is kept.";
 "options.terms.withdraw.confirm" = "Withdraw";
-"options.terms.note" = "Review the Terms of Use, or withdraw your consent. Withdrawing re-shows the agreement screen immediately.";
+"options.terms.note" = "Review the Terms of Use, or withdraw your consent. Withdrawing stops any running sandbox, deletes the base image, and re-shows the agreement screen.";

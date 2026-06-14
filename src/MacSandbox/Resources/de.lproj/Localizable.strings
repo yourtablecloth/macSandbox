@@ -181,6 +181,6 @@
 "options.terms.notAgreed" = "Nicht zugestimmt. Sie werden vor der weiteren Nutzung der App gefragt.";
 "options.terms.withdraw" = "Zustimmung widerrufen…";
 "options.terms.withdraw.title" = "Zustimmung widerrufen?";
-"options.terms.withdraw.message" = "Ihre erfasste Zustimmung wird gelöscht und die Nutzungsbedingungen müssen erneut akzeptiert werden, bevor Sie die App weiter nutzen können. Der Widerruf wird protokolliert.";
+"options.terms.withdraw.message" = "Warnung: Dadurch wird auch eine laufende Sandbox beendet und das Basis-Image DAUERHAFT GELÖSCHT. Ihre erfasste Zustimmung wird gelöscht; um die App erneut zu nutzen, müssen Sie das Basis-Image neu erstellen und den Nutzungsbedingungen erneut zustimmen. Der Widerruf wird protokolliert.";
 "options.terms.withdraw.confirm" = "Widerrufen";
-"options.terms.note" = "Nutzungsbedingungen erneut ansehen oder Zustimmung widerrufen. Beim Widerruf erscheint der Zustimmungsbildschirm sofort wieder.";
+"options.terms.note" = "Nutzungsbedingungen ansehen oder Zustimmung widerrufen. Beim Widerruf wird eine laufende Sandbox beendet, das Basis-Image gelöscht und der Zustimmungsbildschirm erneut angezeigt.";
