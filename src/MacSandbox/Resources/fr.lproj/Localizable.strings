@@ -171,3 +171,7 @@
 "consent.continue" = "Accepter et continuer";
 "consent.quit" = "Quitter";
 "consent.unavailable" = "Impossible de charger les conditions d’utilisation. Veuillez réinstaller l’app.";
+
+/* Terms viewer (Help menu) */
+"menu.terms" = "Afficher les conditions d’utilisation…";
+"common.close" = "Fermer";

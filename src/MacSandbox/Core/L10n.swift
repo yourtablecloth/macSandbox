@@ -72,12 +72,12 @@ private final class L10nStore {
         }
     }
 
-    /// 번들 하위 폴더(`subdir`)에서 `<lang>.md`를 [현재 해석 언어, en] 순으로 읽는다(둘 다 없으면 nil).
+    /// 번들 하위 폴더(`subdir`)에서 `<lang>.md`를 `codes` 순으로 찾아 읽는다(없으면 nil).
     /// 약관 등 언어별 마크다운은 `.lproj`(UI 문자열)와 분리된 전용 폴더(예: `Terms/`)에 두고
     /// Package.swift의 `.copy`로 번들에 동봉된다.
-    static func markdown(inSubdirectory subdir: String) -> String? {
+    static func markdown(inSubdirectory subdir: String, codes: [String]) -> String? {
         let root = resourceBundle()
-        for code in [shared.code, "en"] {
+        for code in codes {
             if let url = root.url(forResource: code, withExtension: "md", subdirectory: subdir),
                let text = try? String(contentsOf: url, encoding: .utf8) {
                 return text
@@ -133,4 +133,11 @@ func L(_ key: String, _ args: CVarArg...) -> String {
 func currentLanguageCode() -> String { L10nStore.shared.code }
 
 /// 번들 하위 폴더(`subdir`)의 언어별 마크다운(`<lang>.md`)을 현재 언어로 읽는다(없으면 en, 그래도 없으면 nil).
-func bundledMarkdown(inSubdirectory subdir: String) -> String? { L10nStore.markdown(inSubdirectory: subdir) }
+func bundledMarkdown(inSubdirectory subdir: String) -> String? {
+    L10nStore.markdown(inSubdirectory: subdir, codes: [currentLanguageCode(), "en"])
+}
+
+/// 지정한 언어(`code`)의 마크다운을 읽는다(없으면 en 폴백). 약관 뷰어의 언어 전환에 사용.
+func bundledMarkdown(inSubdirectory subdir: String, language code: String) -> String? {
+    L10nStore.markdown(inSubdirectory: subdir, codes: [code, "en"])
+}

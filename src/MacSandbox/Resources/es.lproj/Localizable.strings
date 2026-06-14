@@ -171,3 +171,7 @@
 "consent.continue" = "Aceptar y continuar";
 "consent.quit" = "Salir";
 "consent.unavailable" = "No se pudieron cargar los Términos de uso. Vuelva a instalar la app.";
+
+/* Terms viewer (Help menu) */
+"menu.terms" = "Ver los Términos de uso…";
+"common.close" = "Cerrar";

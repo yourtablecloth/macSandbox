@@ -171,3 +171,7 @@
 "consent.continue" = "Zustimmen und fortfahren";
 "consent.quit" = "Beenden";
 "consent.unavailable" = "Die Nutzungsbedingungen konnten nicht geladen werden. Bitte installieren Sie die App neu.";
+
+/* Terms viewer (Help menu) */
+"menu.terms" = "Nutzungsbedingungen anzeigen…";
+"common.close" = "Schließen";

@@ -171,3 +171,7 @@
 "consent.continue" = "Agree and Continue";
 "consent.quit" = "Quit";
 "consent.unavailable" = "The Terms of Use could not be loaded. Please reinstall the app.";
+
+/* Terms viewer (Help menu) */
+"menu.terms" = "View Terms of Use…";
+"common.close" = "Close";

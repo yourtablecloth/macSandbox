@@ -171,3 +171,7 @@
 "consent.continue" = "同意して続ける";
 "consent.quit" = "終了";
 "consent.unavailable" = "利用規約を読み込めませんでした。アプリを再インストールしてください。";
+
+/* Terms viewer (Help menu) */
+"menu.terms" = "利用規約を表示…";
+"common.close" = "閉じる";

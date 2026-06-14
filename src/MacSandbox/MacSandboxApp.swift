@@ -129,6 +129,8 @@ struct MacSandboxGUIApp: App {
                     if let url = URL(string: HelpLinks.help) { NSWorkspace.shared.open(url) }
                 }
                 .keyboardShortcut("?", modifiers: [.command])
+                Divider()
+                TermsMenuItem()   // 사용 약관 보기(언어 전환 가능한 읽기 전용 뷰어)
             }
             CommandMenu(L("menu.sandbox")) {
                 Button(L("menu.stop")) { runner.stop() }
@@ -150,6 +152,14 @@ struct MacSandboxGUIApp: App {
         .defaultPosition(.center)
         .commandsRemoved()   // 창 메뉴 목록에 노출하지 않음
 
+        // '사용 약관' 뷰어 (도움말 메뉴에서 열기 — 언어 전환 가능)
+        Window(L("consent.title"), id: "terms") {
+            TermsViewerView()
+        }
+        .windowResizability(.contentMinSize)
+        .defaultPosition(.center)
+        .commandsRemoved()
+
         // '옵션' 대화상자 (앱 메뉴 › Settings…, ⌘,)
         Settings {
             OptionsView()
@@ -162,6 +172,14 @@ private struct AboutMenuItem: View {
     @Environment(\.openWindow) private var openWindow
     var body: some View {
         Button(L("about.menu")) { openWindow(id: "about") }
+    }
+}
+
+/// 도움말 메뉴의 '사용 약관 보기' 항목 — 언어 전환 가능한 약관 뷰어 창을 연다.
+private struct TermsMenuItem: View {
+    @Environment(\.openWindow) private var openWindow
+    var body: some View {
+        Button(L("menu.terms")) { openWindow(id: "terms") }
     }
 }
 

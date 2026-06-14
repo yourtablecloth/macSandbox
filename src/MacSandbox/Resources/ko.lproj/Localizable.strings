@@ -171,3 +171,7 @@
 "consent.continue" = "동의하고 계속";
 "consent.quit" = "종료";
 "consent.unavailable" = "사용 약관을 불러올 수 없습니다. 앱을 다시 설치해 주세요.";
+
+/* Terms viewer (Help menu) */
+"menu.terms" = "사용 약관 보기…";
+"common.close" = "닫기";
