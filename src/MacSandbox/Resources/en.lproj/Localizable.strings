@@ -175,3 +175,12 @@
 /* Terms viewer (Help menu) */
 "menu.terms" = "View Terms of Use…";
 "common.close" = "Close";
+
+/* Terms consent (Options › General) */
+"options.terms.agreed" = "Agreed to version %1$@ on %2$@.";
+"options.terms.notAgreed" = "Not agreed. You will be asked before continuing to use the app.";
+"options.terms.withdraw" = "Withdraw Consent…";
+"options.terms.withdraw.title" = "Withdraw your consent?";
+"options.terms.withdraw.message" = "Your recorded agreement will be cleared and the Terms of Use must be accepted again before you can continue using the app. A record of this withdrawal is kept.";
+"options.terms.withdraw.confirm" = "Withdraw";
+"options.terms.note" = "Review the Terms of Use, or withdraw your consent. Withdrawing re-shows the agreement screen immediately.";

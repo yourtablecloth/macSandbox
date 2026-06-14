@@ -79,6 +79,10 @@ struct ContentView: View {
             if !running { refresh() }
         }
         .onChange(of: openWSB.token) { _, _ in handleOpenWSB() }
+        .onReceive(NotificationCenter.default.publisher(for: .msbxConsentChanged)) { _ in
+            // 옵션에서 약관 동의를 철회하면 즉시 게이트를 다시 표시(재동의 또는 종료 전까지 차단).
+            showConsent = ConsentStore.needsConsent
+        }
     }
 
     /// 약관 동의 후(또는 이미 동의된 상태) 정상 흐름 진입 — 자동 시작 + 런치 시 `.wsb` 오류 표시.

@@ -175,3 +175,12 @@
 /* Terms viewer (Help menu) */
 "menu.terms" = "Ver los Términos de uso…";
 "common.close" = "Cerrar";
+
+/* Terms consent (Options › General) */
+"options.terms.agreed" = "Aceptó la versión %1$@ el %2$@.";
+"options.terms.notAgreed" = "No aceptado. Se le pedirá antes de seguir usando la app.";
+"options.terms.withdraw" = "Retirar consentimiento…";
+"options.terms.withdraw.title" = "¿Retirar su consentimiento?";
+"options.terms.withdraw.message" = "Se borrará su aceptación registrada y deberá aceptar de nuevo los Términos de uso antes de poder seguir usando la app. Se conserva un registro de esta retirada.";
+"options.terms.withdraw.confirm" = "Retirar";
+"options.terms.note" = "Consulte los Términos de uso o retire su consentimiento. Al retirarlo, la pantalla de aceptación vuelve a aparecer de inmediato.";

@@ -31,9 +31,13 @@ struct OptionsView: View {
     }
 }
 
-/// 일반 — 앱 표시 언어 ('자동' = OS 언어 설정을 따름, 명시 선택 시 고정).
+/// 일반 — 앱 표시 언어 + 사용 약관 동의(상태 표시 / 약관 보기 / 철회).
 private struct GeneralOptionsTab: View {
     @AppStorage(AppOptions.kLanguage) private var language = AppLanguage.auto.rawValue
+    @Environment(\.openWindow) private var openWindow
+    @State private var agreedVersion: String? = ConsentStore.agreedVersion
+    @State private var agreedAt: Date? = ConsentStore.agreedAtDate
+    @State private var confirmWithdraw = false
 
     var body: some View {
         Form {
@@ -46,8 +50,40 @@ private struct GeneralOptionsTab: View {
             } footer: {
                 Text(L("options.language.note")).font(.caption).foregroundStyle(.secondary)
             }
+
+            Section {
+                Text(statusText).foregroundStyle(.secondary)
+                Button(L("menu.terms")) { openWindow(id: "terms") }
+                Button(L("options.terms.withdraw"), role: .destructive) { confirmWithdraw = true }
+                    .disabled(agreedVersion == nil)
+            } header: {
+                Text(L("consent.title"))
+            } footer: {
+                Text(L("options.terms.note")).font(.caption).foregroundStyle(.secondary)
+            }
         }
         .formStyle(.grouped)
+        .onAppear(perform: refreshConsent)
+        .alert(L("options.terms.withdraw.title"), isPresented: $confirmWithdraw) {
+            Button(L("common.cancel"), role: .cancel) { }
+            Button(L("options.terms.withdraw.confirm"), role: .destructive) {
+                ConsentStore.withdraw()
+                refreshConsent()
+            }
+        } message: {
+            Text(L("options.terms.withdraw.message"))
+        }
+    }
+
+    private func refreshConsent() {
+        agreedVersion = ConsentStore.agreedVersion
+        agreedAt = ConsentStore.agreedAtDate
+    }
+
+    private var statusText: String {
+        guard let v = agreedVersion else { return L("options.terms.notAgreed") }
+        let date = agreedAt?.formatted(date: .abbreviated, time: .shortened) ?? ""
+        return L("options.terms.agreed", v, date)
     }
 }
 

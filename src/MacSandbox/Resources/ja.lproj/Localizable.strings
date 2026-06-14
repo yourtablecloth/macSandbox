@@ -175,3 +175,12 @@
 /* Terms viewer (Help menu) */
 "menu.terms" = "利用規約を表示…";
 "common.close" = "閉じる";
+
+/* Terms consent (Options › General) */
+"options.terms.agreed" = "バージョン %1$@ に %2$@ 同意済み。";
+"options.terms.notAgreed" = "未同意。アプリの使用を続ける前に同意が必要です。";
+"options.terms.withdraw" = "同意を撤回…";
+"options.terms.withdraw.title" = "同意を撤回しますか?";
+"options.terms.withdraw.message" = "記録された同意が消去され、アプリの使用を続けるには利用規約に再度同意する必要があります。この撤回は記録として残ります。";
+"options.terms.withdraw.confirm" = "撤回";
+"options.terms.note" = "利用規約を再表示するか、同意を撤回できます。撤回すると同意画面がすぐに再表示されます。";

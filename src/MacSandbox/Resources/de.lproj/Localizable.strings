@@ -175,3 +175,12 @@
 /* Terms viewer (Help menu) */
 "menu.terms" = "Nutzungsbedingungen anzeigen…";
 "common.close" = "Schließen";
+
+/* Terms consent (Options › General) */
+"options.terms.agreed" = "Version %1$@ am %2$@ zugestimmt.";
+"options.terms.notAgreed" = "Nicht zugestimmt. Sie werden vor der weiteren Nutzung der App gefragt.";
+"options.terms.withdraw" = "Zustimmung widerrufen…";
+"options.terms.withdraw.title" = "Zustimmung widerrufen?";
+"options.terms.withdraw.message" = "Ihre erfasste Zustimmung wird gelöscht und die Nutzungsbedingungen müssen erneut akzeptiert werden, bevor Sie die App weiter nutzen können. Der Widerruf wird protokolliert.";
+"options.terms.withdraw.confirm" = "Widerrufen";
+"options.terms.note" = "Nutzungsbedingungen erneut ansehen oder Zustimmung widerrufen. Beim Widerruf erscheint der Zustimmungsbildschirm sofort wieder.";

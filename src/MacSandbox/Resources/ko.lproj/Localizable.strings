@@ -175,3 +175,12 @@
 /* Terms viewer (Help menu) */
 "menu.terms" = "사용 약관 보기…";
 "common.close" = "닫기";
+
+/* Terms consent (Options › General) */
+"options.terms.agreed" = "버전 %1$@에 %2$@ 동의함.";
+"options.terms.notAgreed" = "동의하지 않음. 앱을 계속 사용하기 전에 동의가 필요합니다.";
+"options.terms.withdraw" = "동의 철회…";
+"options.terms.withdraw.title" = "동의를 철회할까요?";
+"options.terms.withdraw.message" = "기록된 동의가 지워지며, 앱을 계속 사용하려면 사용 약관에 다시 동의해야 합니다. 이 철회 사실은 기록으로 남습니다.";
+"options.terms.withdraw.confirm" = "철회";
+"options.terms.note" = "사용 약관을 다시 보거나 동의를 철회할 수 있습니다. 철회하면 즉시 동의 화면이 다시 표시됩니다.";
