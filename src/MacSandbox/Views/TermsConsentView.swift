@@ -55,7 +55,7 @@ struct TermsConsentView: View {
                     .padding(.trailing, 6)
                     .id(language)   // 언어 전환 시 스크롤을 맨 위로 리셋
             }
-            .frame(height: 360)
+            .frame(maxHeight: .infinity)
             .padding(12)
             .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 10))
 
@@ -73,8 +73,8 @@ struct TermsConsentView: View {
                     .keyboardShortcut(.defaultAction)
             }
         }
-        .padding(22)
-        .frame(width: 620)
-        .interactiveDismissDisabled(true)   // 동의/종료 외 경로로 닫히지 않게
+        .padding(24)
+        .frame(maxWidth: 760)                          // 카드 폭 상한
+        .frame(maxWidth: .infinity, maxHeight: .infinity)  // 창 전체를 채우고 중앙 정렬
     }
 }

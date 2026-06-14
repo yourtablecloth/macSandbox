@@ -31,7 +31,15 @@ struct ContentView: View {
 
     var body: some View {
         Group {
-            if baselineReady && !admin.rebuildMode {
+            if showConsent {
+                // 약관 동의 게이트 — 창 전체를 덮는 일반 뷰(모달 시트가 아님: 시트는
+                // interactiveDismissDisabled와 함께 앱 종료를 막아 ⌘Q/종료가 안 되는 버그를 유발).
+                TermsConsentView {
+                    ConsentStore.recordAgreement()   // 동의 버전·시점 기록(UserDefaults + 감사 로그)
+                    showConsent = false
+                    proceedAfterConsent()
+                }
+            } else if baselineReady && !admin.rebuildMode {
                 SandboxView(runner: runner, admin: admin, config: $config)
             } else {
                 BuildView(builder: builder, admin: admin, canReturnToSandbox: baselineReady)
@@ -48,13 +56,6 @@ struct ContentView: View {
             Button(L("common.ok")) { wsbError = nil }
         } message: {
             Text(wsbError ?? "")
-        }
-        .sheet(isPresented: $showConsent) {
-            TermsConsentView {
-                ConsentStore.recordAgreement()   // 동의 버전·시점 기록(UserDefaults + 감사 로그)
-                showConsent = false
-                proceedAfterConsent()
-            }
         }
         .onAppear {
             AppHooks.shared.runner = runner   // 앱/창 종료 훅이 참조

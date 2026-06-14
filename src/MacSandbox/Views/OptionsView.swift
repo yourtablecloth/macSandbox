@@ -35,6 +35,7 @@ struct OptionsView: View {
 private struct GeneralOptionsTab: View {
     @AppStorage(AppOptions.kLanguage) private var language = AppLanguage.auto.rawValue
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.dismiss) private var dismiss
     @State private var agreedVersion: String? = ConsentStore.agreedVersion
     @State private var agreedAt: Date? = ConsentStore.agreedAtDate
     @State private var confirmWithdraw = false
@@ -67,8 +68,9 @@ private struct GeneralOptionsTab: View {
         .alert(L("options.terms.withdraw.title"), isPresented: $confirmWithdraw) {
             Button(L("common.cancel"), role: .cancel) { }
             Button(L("options.terms.withdraw.confirm"), role: .destructive) {
-                ConsentStore.withdraw()
+                ConsentStore.withdraw()   // 통지 → ContentView가 세션 종료 + 베이스 이미지 삭제 + 게이트 표시
                 refreshConsent()
+                dismiss()                 // 옵션 창을 닫아 메인 창의 동의 게이트가 보이게 한다
             }
         } message: {
             Text(L("options.terms.withdraw.message"))

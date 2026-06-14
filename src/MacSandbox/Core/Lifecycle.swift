@@ -29,6 +29,12 @@ final class AppHooks {
 @MainActor
 private func confirmStopAndQuit() -> Bool {
     guard let runner = AppHooks.shared.runner, runner.isRunning else { return true }
+    // 약관 동의 게이트가 떠 있으면 확인 alert를 띄우지 않는다 — 게이트는 모달 시트라
+    // 그 위에 NSAlert.runModal()을 띄우면 교착되고, '닫기'는 동의 거부 의사라 확인이 불필요.
+    if ConsentStore.needsConsent {
+        stopThenQuit(runner) { NSApp.terminate(nil) }
+        return false
+    }
     let alert = NSAlert()
     alert.messageText = L("quit.title")
     alert.informativeText = L("quit.message.close")
@@ -36,16 +42,21 @@ private func confirmStopAndQuit() -> Bool {
     alert.addButton(withTitle: L("quit.confirm"))   // 기본(첫 번째)
     alert.addButton(withTitle: L("common.cancel"))
     guard alert.runModal() == .alertFirstButtonReturn else { return false }
+    stopThenQuit(runner) { NSApp.terminate(nil) }
+    return false
+}
+
+/// 샌드박스를 정지하고 일회용 정리가 끝날 때까지(최대 ~10초) 기다린 뒤 `finish`를 호출한다.
+@MainActor
+private func stopThenQuit(_ runner: SandboxRunner, finish: @escaping @MainActor () -> Void) {
     runner.stop()
     Task { @MainActor in
-        // 일회용 정리(오버레이 삭제 등)가 끝날 때까지 잠깐 기다린 뒤 앱 종료.
-        for _ in 0..<50 {              // 최대 ~10초
+        for _ in 0..<50 {
             if !runner.isRunning { break }
             try? await Task.sleep(nanoseconds: 200_000_000)
         }
-        NSApp.terminate(nil)
+        finish()
     }
-    return false
 }
 
 /// 메인 창의 닫기(빨간 버튼/⌘W)를 가로채 확인 다이얼로그를 띄운다.
@@ -78,6 +89,12 @@ final class SandboxAppDelegate: NSObject, NSApplicationDelegate {
             guard let runner = AppHooks.shared.runner, runner.isRunning else {
                 return NSApplication.TerminateReply.terminateNow
             }
+            // 약관 동의 게이트(미동의)가 떠 있으면 확인 alert 없이 정지 후 종료한다.
+            // (모달 시트 위 NSAlert.runModal()은 교착을 부르고, ⌘Q/종료는 동의 거부 의사다.)
+            if ConsentStore.needsConsent {
+                stopThenQuit(runner) { NSApp.reply(toApplicationShouldTerminate: true) }
+                return NSApplication.TerminateReply.terminateLater
+            }
             let alert = NSAlert()
             alert.messageText = L("quit.title")
             alert.informativeText = L("quit.message.quit")
@@ -87,14 +104,7 @@ final class SandboxAppDelegate: NSObject, NSApplicationDelegate {
             guard alert.runModal() == .alertFirstButtonReturn else {
                 return NSApplication.TerminateReply.terminateCancel
             }
-            runner.stop()
-            Task { @MainActor in
-                for _ in 0..<50 {
-                    if !runner.isRunning { break }
-                    try? await Task.sleep(nanoseconds: 200_000_000)
-                }
-                NSApp.reply(toApplicationShouldTerminate: true)
-            }
+            stopThenQuit(runner) { NSApp.reply(toApplicationShouldTerminate: true) }
             return NSApplication.TerminateReply.terminateLater
         }
     }
