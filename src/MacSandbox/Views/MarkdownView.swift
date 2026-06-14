@@ -41,24 +41,40 @@ struct MarkdownView: View {
 
     private func blocks() -> [Block] {
         var result: [Block] = []
+        var paragraph: [String] = []   // 빈 줄 전까지 연속된 본문 줄을 한 문단으로 합친다
+
+        // 본문 줄 누적분을 하나의 문단으로 방출(인라인 굵게/이탤릭이 줄에 걸쳐도 매칭되도록).
+        func flushParagraph() {
+            guard !paragraph.isEmpty else { return }
+            let text = paragraph.joined(separator: " ")
+            result.append(Block(view: AnyView(paragraphView(text))))
+            paragraph.removeAll()
+        }
+
         for rawLine in markdown.components(separatedBy: "\n") {
             let line = rawLine.trimmingCharacters(in: .whitespaces)
-            if line.isEmpty { continue }   // 문단 간격은 VStack spacing으로 처리
+            if line.isEmpty { flushParagraph(); continue }   // 문단 경계
 
             if line == "---" || line == "***" || line == "___" {
+                flushParagraph()
                 result.append(Block(view: AnyView(Divider().padding(.vertical, 2))))
             } else if let (level, text) = heading(line) {
+                flushParagraph()
                 result.append(Block(view: AnyView(headingView(level: level, text: text))))
             } else if let item = bullet(line) {
+                flushParagraph()
                 result.append(Block(view: AnyView(listRow(marker: "•", text: item))))
             } else if let (number, item) = numbered(line) {
+                flushParagraph()
                 result.append(Block(view: AnyView(listRow(marker: "\(number).", text: item))))
             } else if let quote = blockquote(line) {
+                flushParagraph()
                 result.append(Block(view: AnyView(quoteView(quote))))
             } else {
-                result.append(Block(view: AnyView(paragraphView(line))))
+                paragraph.append(line)   // 본문 — 누적(빈 줄/다른 블록을 만나면 합쳐 방출)
             }
         }
+        flushParagraph()
         return result
     }
 

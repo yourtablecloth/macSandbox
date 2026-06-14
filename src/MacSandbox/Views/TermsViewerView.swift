@@ -62,6 +62,8 @@ struct TermsViewerView: View {
             }
         }
         .padding(20)
-        .frame(minWidth: 560, idealWidth: 640, minHeight: 480, idealHeight: 580)
+        // 창 크기 조절로 본문이 폭에 맞춰 word-wrap된다(읽기 편한 기본값 + 자유 리사이즈).
+        .frame(minWidth: 520, idealWidth: 700, maxWidth: .infinity,
+               minHeight: 460, idealHeight: 640, maxHeight: .infinity)
     }
 }
