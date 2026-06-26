@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Mach-O 실행파일/dylib의 비시스템 의존 dylib를 재귀적으로 dest로 복사하고
-install name을 @rpath/<name>으로 재작성한다(.app 자체완결화).
+"""Recursively copy a Mach-O executable's/dylib's non-system dependency dylibs into dest
+and rewrite their install names to @rpath/<name> (making the .app self-contained).
 
-사용: bundle_dylibs.py <macho> <dest_frameworks_dir> [--add-rpath @executable_path/../Frameworks]
-- 시스템 라이브러리(/usr/lib, /System)는 건너뜀.
-- 이미 dest에 있는 동일 이름은 재복사하지 않고 참조만 수정.
-- install_name_tool로 서명이 깨지므로 호출 후 반드시 재서명할 것.
+Usage: bundle_dylibs.py <macho> <dest_frameworks_dir> [--add-rpath @executable_path/../Frameworks]
+- System libraries (/usr/lib, /System) are skipped.
+- A name already present in dest is not re-copied; only its references are fixed.
+- install_name_tool breaks code-signing, so always re-sign after calling this.
 """
 import os
 import shutil
@@ -46,10 +46,10 @@ def main():
                 continue
             base = os.path.basename(dep)
             if base == self_id and not is_main:
-                continue  # 자기 자신 id 참조
+                continue  # self id reference
             real = os.path.realpath(dep) if dep.startswith("/") else None
             if not real or not os.path.exists(real):
-                print(f"  ⚠️  해석 불가 의존: {dep} (수동 확인)")
+                print(f"  ⚠️  unresolvable dependency: {dep} (check manually)")
                 continue
             dst = os.path.join(dest, base)
             new = not os.path.exists(dst)
@@ -66,7 +66,7 @@ def main():
     process(main_bin, True)
     if add_rpath:
         subprocess.run(["install_name_tool", "-add_rpath", add_rpath, main_bin], capture_output=True)
-    print(f"번들 완료 → {dest} ({len(os.listdir(dest))}개)")
+    print(f"Bundling complete → {dest} ({len(os.listdir(dest))} file(s))")
     return 0
 
 

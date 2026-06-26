@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""MacSandbox 자체 소스 파일에 듀얼 라이선스(SPDX) 헤더를 멱등하게 적용한다.
+"""Idempotently apply the dual-license (SPDX) header to MacSandbox's own source files.
 
-- 대상: src/**/*.{swift,c,m,h}  (우리 저작물만; vendor/, .build/ 제외)
-- 이미 라이선스 헤더가 있으면 건너뜀.
-사용: python3 scripts/apply_license_headers.py        # 적용
-      python3 scripts/apply_license_headers.py --check # 미적용 파일만 출력(쓰지 않음)
+- Targets: src/**/*.{swift,c,m,h}  (our own works only; vendor/, .build/ excluded)
+- Skipped if a license header is already present.
+Usage: python3 scripts/apply_license_headers.py        # apply
+       python3 scripts/apply_license_headers.py --check # print only the files not yet applied (no writes)
 """
 import os
 import sys
@@ -32,7 +32,7 @@ HEADER_LINES = [
 
 
 def header_block() -> str:
-    # 모든 대상 확장자가 // 주석을 지원(swift/c/objc).
+    # All target extensions support // comments (swift/c/objc).
     return "\n".join("// " + l if l else "//" for l in HEADER_LINES) + "\n\n"
 
 
@@ -69,11 +69,11 @@ def main():
 
     rel = lambda n: n
     if check:
-        print(f"[check] 헤더 없는 파일 {len(missing)}개:")
+        print(f"[check] {len(missing)} file(s) without a header:")
         for m in missing:
             print("  " + m)
     else:
-        print(f"[apply] 적용 {applied}개, 이미 있음 {skipped}개")
+        print(f"[apply] {applied} applied, {skipped} already present")
     return 0
 
 

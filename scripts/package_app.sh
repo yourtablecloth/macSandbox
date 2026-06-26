@@ -1,52 +1,52 @@
 #!/bin/bash
-# macSandbox for Windows를 배포용 .app + .dmg로 패키징한다.
+# Package macSandbox for Windows into a distributable .app + .dmg.
 #
-#   ad-hoc(로컬/CI 기본):  scripts/package_app.sh
-#                          → DEVELOPER_ID 미지정 시 ad-hoc("-") 서명, 공증 생략.
+#   ad-hoc (local/CI default):  scripts/package_app.sh
+#                          → when DEVELOPER_ID is unset, signs ad-hoc ("-") and skips notarization.
 #
-#   배포(서명):            DEVELOPER_ID="Developer ID Application: NAME (TEAMID)" \
+#   distribution (signed):     DEVELOPER_ID="Developer ID Application: NAME (TEAMID)" \
 #                          scripts/package_app.sh
 #
-#   배포(서명+공증):       위에 더해 아래 중 한 방식의 공증 자격증명을 지정하면
-#                          DMG를 자동으로 공증(notarize) + 스테이플(staple)한다.
-#     A) 로컬(키체인 프로파일):  NOTARY_PROFILE="<notarytool store-credentials 프로파일>"
-#     B) CI(앱 전용 암호):       NOTARY_APPLE_ID, NOTARY_TEAM_ID, NOTARY_PASSWORD
+#   distribution (signed+notarized):  in addition to the above, specifying notarization credentials in one of the ways below
+#                          will automatically notarize + staple the DMG.
+#     A) local (keychain profile):  NOTARY_PROFILE="<notarytool store-credentials profile>"
+#     B) CI (app-specific password):  NOTARY_APPLE_ID, NOTARY_TEAM_ID, NOTARY_PASSWORD
 #
-# 즉 서명/공증은 "환경 변수만 추가하면" 켜진다(코드 변경 불필요).
+# In other words, signing/notarization turns on "just by adding environment variables" (no code changes needed).
 #
-# 전제: macOS, Xcode CLT, brew(wimlib/freerdp 설치됨), vendor/qemu 준비(scripts/bundle_qemu.py).
+# Prerequisites: macOS, Xcode CLT, brew (wimlib/freerdp installed), vendor/qemu prepared (scripts/bundle_qemu.py).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-APP_NAME="macSandbox for Windows"        # 제품/번들 표시 이름 (.app, DMG 볼륨)
-EXEC_NAME="MacSandbox"                   # SwiftPM 실행 파일 이름 (내부 고정)
+APP_NAME="macSandbox for Windows"        # Product/bundle display name (.app, DMG volume)
+EXEC_NAME="MacSandbox"                   # SwiftPM executable name (fixed internally)
 BUNDLE_ID="${BUNDLE_ID:-com.rkttu.macsandbox}"
 VERSION="${VERSION:-1.0.0}"
-IDENTITY="${DEVELOPER_ID:--}"            # 기본 ad-hoc("-")
+IDENTITY="${DEVELOPER_ID:--}"            # default ad-hoc ("-")
 DIST="dist"; APP="$DIST/$APP_NAME.app"; C="$APP/Contents"
 ENT_APP="scripts/app.entitlements"     # disable-library-validation
 ENT_QEMU="scripts/qemu.entitlements"   # hypervisor + disable-library-validation
 
 sign() { codesign --force --timestamp --options runtime -s "$IDENTITY" "$@"; }
 
-echo "▶ 1/8 릴리스 빌드"
+echo "▶ 1/8 Release build"
 swift build -c release
 BIN=".build/release/$EXEC_NAME"
 
-echo "▶ 2/8 .app 골격 생성"
+echo "▶ 2/8 Create .app skeleton"
 rm -rf "$APP"; mkdir -p "$C/MacOS" "$C/Resources" "$C/Frameworks"
 cp "$BIN" "$C/MacOS/$EXEC_NAME"
-# SwiftPM 리소스 번들(로컬라이제이션 .lproj)을 Contents/Resources에 넣는다.
-# L10nStore가 Bundle.main.resourceURL(= Contents/Resources)에서 직접 찾으므로 위치가 중요.
-# 누락되면 UI가 키 문자열로 표시되거나(폴백) 빈약해지므로 없으면 빌드를 실패시킨다.
+# Put the SwiftPM resource bundle (localization .lproj) into Contents/Resources.
+# L10nStore looks it up directly from Bundle.main.resourceURL (= Contents/Resources), so its location matters.
+# If missing, the UI shows key strings (fallback) or degrades, so fail the build when it's absent.
 RES_BUNDLE=".build/release/${EXEC_NAME}_${EXEC_NAME}.bundle"
 if [ ! -d "$RES_BUNDLE" ]; then
-  echo "  ❌ 리소스 번들 없음: $RES_BUNDLE (로컬라이제이션 .lproj). swift build -c release 산출물 확인" >&2
+  echo "  ❌ Resource bundle missing: $RES_BUNDLE (localization .lproj). Check the swift build -c release output" >&2
   exit 1
 fi
 cp -R "$RES_BUNDLE" "$C/Resources/"
 
-# 앱 아이콘 — assets/AppIcon.png(1024²)에서 .icns 생성(재생성: swift scripts/make_assets.swift)
+# App icon — generate .icns from assets/AppIcon.png (1024²) (regenerate: swift scripts/make_assets.swift)
 ICON_SRC="assets/AppIcon.png"
 if [ -f "$ICON_SRC" ]; then
   ICONSET="$(mktemp -d)/AppIcon.iconset"; mkdir -p "$ICONSET"
@@ -54,10 +54,10 @@ if [ -f "$ICON_SRC" ]; then
     sips -z "$s" "$s"           "$ICON_SRC" --out "$ICONSET/icon_${s}x${s}.png"    >/dev/null 2>&1
     sips -z "$((s*2))" "$((s*2))" "$ICON_SRC" --out "$ICONSET/icon_${s}x${s}@2x.png" >/dev/null 2>&1
   done
-  iconutil -c icns "$ICONSET" -o "$C/Resources/AppIcon.icns" && echo "  아이콘: AppIcon.icns 생성"
+  iconutil -c icns "$ICONSET" -o "$C/Resources/AppIcon.icns" && echo "  icon: AppIcon.icns generated"
   rm -rf "$(dirname "$ICONSET")"
 else
-  echo "  ⚠️ $ICON_SRC 없음 — 아이콘 생략(generic). 'swift scripts/make_assets.swift'로 생성"
+  echo "  ⚠️ $ICON_SRC missing — skipping icon (generic). Generate with 'swift scripts/make_assets.swift'"
 fi
 
 echo "▶ 3/8 Info.plist"
@@ -106,11 +106,11 @@ cat > "$C/Info.plist" <<PLIST
 </dict></plist>
 PLIST
 
-echo "▶ 4/8 QEMU 번들(x86 에뮬레이터 제거 슬림화) + wimlib"
+echo "▶ 4/8 QEMU bundle (slimmed by removing the x86 emulator) + wimlib"
 mkdir -p "$C/Resources/vendor"
 cp -R vendor/qemu "$C/Resources/vendor/qemu"
-rm -f "$C/Resources/vendor/qemu/bin/qemu-system-x86_64"   # Apple Silicon에선 불필요
-# wimlib-imagex(베이스라인 빌드용)를 vendor/qemu/bin에 동봉 → SandboxPaths가 자동 탐색
+rm -f "$C/Resources/vendor/qemu/bin/qemu-system-x86_64"   # not needed on Apple Silicon
+# Bundle wimlib-imagex (for baseline builds) into vendor/qemu/bin → SandboxPaths discovers it automatically
 WIMX="$(command -v wimlib-imagex || echo /opt/homebrew/bin/wimlib-imagex)"
 if [ -x "$WIMX" ]; then
   cp "$WIMX" "$C/Resources/vendor/qemu/bin/wimlib-imagex"
@@ -122,34 +122,34 @@ if [ -x "$WIMX" ]; then
        "$C/Resources/vendor/qemu/bin/wimlib-imagex"
   fi
 else
-  echo "  ⚠️ wimlib-imagex 없음 — 베이스라인 빌드 기능엔 'brew install wimlib' 필요"
+  echo "  ⚠️ wimlib-imagex missing — the baseline build feature requires 'brew install wimlib'"
 fi
 
-echo "▶ 5/8 FreeRDP dylib 번들 + @rpath 수정"
+echo "▶ 5/8 Bundle FreeRDP dylibs + fix @rpath"
 python3 scripts/bundle_dylibs.py "$C/MacOS/$EXEC_NAME" "$C/Frameworks" --add-rpath @executable_path/../Frameworks
 
-echo "▶ 6/8 라이선스/고지 동봉(GPL 컴플라이언스)"
+echo "▶ 6/8 Bundle licenses/notices (GPL compliance)"
 for f in LICENSE THIRD-PARTY-NOTICES.md WRITTEN-OFFER.txt LICENSING.md; do
   [ -f "$f" ] && cp "$f" "$C/Resources/"
 done
 [ -d gpl-sources ] && cp -R gpl-sources "$C/Resources/gpl-sources" || \
-  echo "  ℹ️ gpl-sources 없음 — 배포 전 'python3 scripts/fetch_gpl_sources.py' 권장(또는 WRITTEN-OFFER로 갈음)"
+  echo "  ℹ️ gpl-sources missing — 'python3 scripts/fetch_gpl_sources.py' is recommended before distribution (or substitute with WRITTEN-OFFER)"
 
-echo "▶ 7/8 코드 서명 (identity: $IDENTITY)"
-# (1) 모든 dylib(Frameworks + vendor/qemu/lib)
+echo "▶ 7/8 Code-signing (identity: $IDENTITY)"
+# (1) All dylibs (Frameworks + vendor/qemu/lib)
 find "$APP" -name '*.dylib' -exec codesign --force --timestamp --options runtime -s "$IDENTITY" {} +
-# (2) QEMU 시스템 에뮬레이터 — hypervisor + 라이브러리검증 비활성(번들 dylib 로드)
+# (2) QEMU system emulator — hypervisor + library validation disabled (loads bundled dylibs)
 sign --entitlements "$ENT_QEMU" "$C/Resources/vendor/qemu/bin/qemu-system-aarch64"
-# (3) 나머지 vendor/qemu/bin 실행파일 — Hardened Runtime은 lib validation을 켜므로,
-#     ad-hoc/혼합 서명된 번들 dylib(libzstd 등)를 로드하려면 disable-library-validation 필수.
+# (3) The remaining vendor/qemu/bin executables — Hardened Runtime turns on lib validation, so
+#     disable-library-validation is required to load ad-hoc/mixed-signed bundled dylibs (libzstd, etc.).
 find "$C/Resources/vendor/qemu/bin" -type f -perm -111 ! -name 'qemu-system-aarch64' \
   -exec codesign --force --timestamp --options runtime --entitlements "$ENT_APP" -s "$IDENTITY" {} + 2>/dev/null || true
-# (5) 메인 실행파일 → 앱 번들(마지막)
+# (5) Main executable → app bundle (last)
 sign --entitlements "$ENT_APP" "$C/MacOS/$EXEC_NAME"
 sign --entitlements "$ENT_APP" "$APP"
-codesign --verify --strict --verbose=1 "$APP" && echo "  서명 검증 OK"
+codesign --verify --strict --verbose=1 "$APP" && echo "  signature verification OK"
 
-echo "▶ 8/8 DMG 생성 (배경/배치 스타일링)"
+echo "▶ 8/8 Create DMG (background/layout styling)"
 DMG="$DIST/macSandbox-for-Windows-$VERSION.dmg"
 VOLNAME="$APP_NAME"
 STAGE="$(mktemp -d)"
@@ -158,7 +158,7 @@ ln -s /Applications "$STAGE/Applications"
 BG_SRC="assets/dmg-background.png"
 [ -f "$BG_SRC" ] && { mkdir -p "$STAGE/.background"; cp "$BG_SRC" "$STAGE/.background/background.png"; }
 
-# 읽기/쓰기 DMG로 만들어 Finder로 꾸민 뒤(배경·아이콘 위치) 압축 포맷으로 변환한다.
+# Create a read/write DMG, decorate it with Finder (background, icon positions), then convert to a compressed format.
 RW="$DIST/.rw-$VERSION.dmg"; rm -f "$RW"
 hdiutil detach "/Volumes/$VOLNAME" >/dev/null 2>&1 || true
 hdiutil create -volname "$VOLNAME" -srcfolder "$STAGE" -fs HFS+ -format UDRW -ov "$RW" >/dev/null
@@ -166,7 +166,7 @@ rm -rf "$STAGE"
 DEV="$(hdiutil attach -readwrite -noverify -noautoopen "$RW" | grep -oE '^/dev/disk[0-9]+' | head -1)"
 sleep 1
 
-style_dmg() {   # Finder 자동화(헤드리스/권한 미허용 시 실패 가능) — 타임아웃으로 보호
+style_dmg() {   # Finder automation (may fail when headless / permission not granted) — protected with a timeout
   osascript <<OSA
 tell application "Finder"
   tell disk "$VOLNAME"
@@ -193,7 +193,7 @@ STYLED=0
 if [ -f "$BG_SRC" ]; then
   ( style_dmg >/dev/null 2>&1 ) & SP=$!
   ( sleep 40; kill "$SP" 2>/dev/null ) & WP=$!
-  if wait "$SP" 2>/dev/null; then STYLED=1; echo "  스타일링 적용됨"; else echo "  ⚠️ Finder 자동화 불가 — 기본 레이아웃으로 진행"; fi
+  if wait "$SP" 2>/dev/null; then STYLED=1; echo "  styling applied"; else echo "  ⚠️ Finder automation unavailable — proceeding with the default layout"; fi
   kill "$WP" 2>/dev/null || true
 fi
 sync
@@ -204,17 +204,17 @@ hdiutil convert "$RW" -format UDZO -imagekey zlib-level=9 -o "$DMG" >/dev/null
 rm -f "$RW"
 [ "$IDENTITY" != "-" ] && codesign --force --timestamp -s "$IDENTITY" "$DMG"
 
-# ── 공증(notarization) — 자격증명이 주어졌을 때만 자동 수행 ─────────────────
-# Developer ID로 서명됐고(ad-hoc 아님) NOTARY_* 자격증명이 있으면 DMG를 공증 + 스테이플.
-# 미지정 시 조용히 건너뛴다(ad-hoc/미공증 DMG는 그대로 산출됨).
+# ── Notarization — performed automatically only when credentials are provided ─────────────────
+# If signed with a Developer ID (not ad-hoc) and NOTARY_* credentials are present, notarize + staple the DMG.
+# If unset, silently skip (the ad-hoc/unnotarized DMG is produced as-is).
 NOTARIZED=0
 if [ "$IDENTITY" != "-" ]; then
   if [ -n "${NOTARY_PROFILE:-}" ]; then
-    echo "▶ 공증 (notarytool · keychain-profile)"
+    echo "▶ Notarization (notarytool · keychain-profile)"
     xcrun notarytool submit "$DMG" --keychain-profile "$NOTARY_PROFILE" --wait
     xcrun stapler staple "$DMG"; NOTARIZED=1
   elif [ -n "${NOTARY_APPLE_ID:-}" ] && [ -n "${NOTARY_TEAM_ID:-}" ] && [ -n "${NOTARY_PASSWORD:-}" ]; then
-    echo "▶ 공증 (notarytool · apple-id)"
+    echo "▶ Notarization (notarytool · apple-id)"
     xcrun notarytool submit "$DMG" --apple-id "$NOTARY_APPLE_ID" --team-id "$NOTARY_TEAM_ID" \
       --password "$NOTARY_PASSWORD" --wait
     xcrun stapler staple "$DMG"; NOTARIZED=1
@@ -222,15 +222,15 @@ if [ "$IDENTITY" != "-" ]; then
 fi
 
 echo ""
-echo "✅ 완료:"
-echo "   앱: $APP"
+echo "✅ Done:"
+echo "   App: $APP"
 echo "   DMG: $DMG  ($(du -h "$DMG" | cut -f1))"
 if [ "$IDENTITY" = "-" ]; then
-  echo "   서명: ad-hoc (로컬/테스트용 — 배포하려면 DEVELOPER_ID 지정)"
+  echo "   Signing: ad-hoc (for local/testing — specify DEVELOPER_ID to distribute)"
 elif [ "$NOTARIZED" = "1" ]; then
-  echo "   서명: $IDENTITY"
-  echo "   공증: 완료 + 스테이플됨 (Gatekeeper 통과, 배포 가능)"
+  echo "   Signing: $IDENTITY"
+  echo "   Notarization: complete + stapled (passes Gatekeeper, ready to distribute)"
 else
-  echo "   서명: $IDENTITY"
-  echo "   공증: 생략 (NOTARY_PROFILE 또는 NOTARY_APPLE_ID/TEAM_ID/PASSWORD 지정 시 자동 공증)"
+  echo "   Signing: $IDENTITY"
+  echo "   Notarization: skipped (auto-notarizes when NOTARY_PROFILE or NOTARY_APPLE_ID/TEAM_ID/PASSWORD is set)"
 fi

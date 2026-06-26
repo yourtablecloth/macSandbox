@@ -1,6 +1,6 @@
 {
   "lockfile_version": 1,
-  "_note": "qemu는 10.2.1로 핀(arm64_sonoma=macOS14). 11.x는 HVF에서 SME 레지스터 assertion으로 크래시하므로 update_lock.py로 무심코 bump 금지 — HVF 부팅 테스트 후에만 갱신.",
+  "_note": "qemu is pinned to 10.2.1 (arm64_sonoma=macOS14). 11.x crashes under HVF with an SME register assertion, so do not inadvertently bump it via update_lock.py — only update after an HVF boot test.",
   "created": "2026-06-07",
   "bottle_tag": "arm64_sonoma",
   "packages": {

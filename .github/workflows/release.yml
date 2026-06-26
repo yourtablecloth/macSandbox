@@ -1,11 +1,11 @@
 name: Release DMG
 
-# DMG 패키징 자동화.
-# - 기본(시크릿 없음): ad-hoc 서명 DMG를 빌드해 아티팩트로 업로드.
-# - 시크릿이 있으면 그대로 Developer ID 서명(+공증)까지 자동 적용(코드 변경 불필요).
-#   서명:  MACOS_CERT_P12(base64 .p12), MACOS_CERT_PASSWORD, MACOS_DEVELOPER_ID
-#   공증:  NOTARY_APPLE_ID, NOTARY_TEAM_ID, NOTARY_PASSWORD(앱 전용 암호)
-# - 태그(v*) 푸시 시 GitHub Release를 만들고 DMG를 자산으로 첨부.
+# DMG packaging automation.
+# - Default (no secrets): builds an ad-hoc signed DMG and uploads it as an artifact.
+# - If secrets are present, automatically applies Developer ID signing (+notarization) as well (no code changes needed).
+#   Signing:  MACOS_CERT_P12 (base64 .p12), MACOS_CERT_PASSWORD, MACOS_DEVELOPER_ID
+#   Notarization:  NOTARY_APPLE_ID, NOTARY_TEAM_ID, NOTARY_PASSWORD (app-specific password)
+# - On a tag (v*) push, creates a GitHub Release and attaches the DMG as an asset.
 
 on:
   push:
@@ -13,11 +13,11 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version (예: 1.0.0). 비우면 0.0.0-dev"
+        description: "Version (e.g. 1.0.0). Leave empty for 0.0.0-dev"
         required: false
 
 permissions:
-  contents: write   # gh release 생성/자산 업로드
+  contents: write   # create gh release / upload assets
 
 concurrency:
   group: release-${{ github.ref }}
@@ -25,15 +25,15 @@ concurrency:
 
 jobs:
   build:
-    # Apple Silicon(arm64) 표준 러너 — public 저장소에서 무료.
-    # arm64_sonoma 보틀(scripts/qemu-bottles.lock.json) 및 LSMinimumSystemVersion 14.0과 일치.
+    # Standard Apple Silicon (arm64) runner — free for public repositories.
+    # Matches the arm64_sonoma bottles (scripts/qemu-bottles.lock.json) and LSMinimumSystemVersion 14.0.
     runs-on: macos-14
     env:
-      # 서명(있으면 Developer ID, 없으면 ad-hoc)
+      # Signing (Developer ID if present, otherwise ad-hoc)
       MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
       MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
       MACOS_DEVELOPER_ID: ${{ secrets.MACOS_DEVELOPER_ID }}
-      # 공증(있으면 notarize+staple) — package_app.sh가 이 변수들을 직접 읽는다
+      # Notarization (notarize+staple if present) — package_app.sh reads these variables directly
       NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
       NOTARY_TEAM_ID: ${{ secrets.NOTARY_TEAM_ID }}
       NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
@@ -72,7 +72,7 @@ jobs:
             -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: \
             -s -k "$KEYCHAIN_PW" "$KEYCHAIN_PATH" >/dev/null
-          # 빌드 키체인을 검색 목록 맨 앞에 추가(기존 항목 유지)
+          # Add the build keychain to the front of the search list (keeping existing entries)
           security list-keychains -d user -s "$KEYCHAIN_PATH" \
             $(security list-keychains -d user | sed 's/[”"]//g')
           rm -f "$RUNNER_TEMP/cert.p12"
@@ -80,7 +80,7 @@ jobs:
       - name: Build & package DMG
         env:
           VERSION: ${{ steps.ver.outputs.version }}
-          DEVELOPER_ID: ${{ env.MACOS_DEVELOPER_ID }}   # 비어 있으면 package_app.sh가 ad-hoc 사용
+          DEVELOPER_ID: ${{ env.MACOS_DEVELOPER_ID }}   # if empty, package_app.sh uses ad-hoc
         run: scripts/package_app.sh
 
       - name: Upload DMG artifact

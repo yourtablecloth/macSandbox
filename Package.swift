@@ -2,7 +2,7 @@
 
 import PackageDescription
 
-// FreeRDP(brew) 경로. 임베드 RDP 뷰(libfreerdp 직접 링크).
+// FreeRDP(brew) paths. Embedded RDP view (direct libfreerdp linking).
 let freerdpInclude = "/opt/homebrew/include/freerdp3"
 let winprInclude = "/opt/homebrew/include/winpr3"
 let brewLib = "/opt/homebrew/lib"
@@ -14,7 +14,7 @@ let package = Package(
         .macOS(.v14)
     ],
     targets: [
-        // libfreerdp C 브리지 (임베드 RDP 뷰). brew freerdp 라이브러리에 직접 링크.
+        // libfreerdp C bridge (embedded RDP view). Links directly to the brew freerdp library.
         .target(
             name: "CFreeRDP",
             path: "src/CFreeRDP",
@@ -22,8 +22,8 @@ let package = Package(
                 .unsafeFlags([
                     "-I\(freerdpInclude)",
                     "-I\(winprInclude)",
-                    // freerdp 3.x 헤더는 구조체에 deprecated 멤버를 선언해 include만 해도 경고가 난다.
-                    // 서드파티 브리지 타깃이므로 deprecation 경고를 일괄 억제한다.
+                    // freerdp 3.x headers declare deprecated members in their structs, so even just including them produces warnings.
+                    // Since this is a third-party bridge target, suppress all deprecation warnings.
                     "-Wno-deprecated-declarations"
                 ])
             ]
@@ -33,8 +33,8 @@ let package = Package(
             dependencies: ["CFreeRDP"],
             path: "src/MacSandbox",
             resources: [
-                .process("Resources"),    // .lproj 로컬라이제이션(Localizable.strings)
-                .copy("Terms")            // 언어별 약관 마크다운(Terms/<lang>.md) — 빌드 시 번들에 동봉
+                .process("Resources"),    // .lproj localization (Localizable.strings)
+                .copy("Terms")            // Per-language terms markdown (Terms/<lang>.md) — bundled at build time
             ],
             linkerSettings: [
                 .unsafeFlags([
