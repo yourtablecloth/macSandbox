@@ -13,7 +13,7 @@
 
 import Foundation
 
-/// qcow2 디스크 생성 및 COW 오버레이 관리 (qemu-img 래퍼)
+/// qcow2 disk creation and COW overlay management (qemu-img wrapper)
 final class DiskService {
 
     enum DiskError: LocalizedError {
@@ -30,12 +30,12 @@ final class DiskService {
         }
     }
 
-    /// 빈 qcow2 디스크 생성
+    /// Create an empty qcow2 disk
     func createQcow2(at path: String, sizeGB: Int) throws {
         try runQemuImg(["create", "-f", "qcow2", path, "\(sizeGB)G"])
     }
 
-    /// 베이스 이미지 위에 Copy-on-Write 오버레이 생성 (샌드박스 런타임용)
+    /// Create a Copy-on-Write overlay on top of the base image (for the sandbox runtime)
     func createOverlay(basePath: String, overlayPath: String) throws {
         try runQemuImg(["create", "-f", "qcow2", "-b", basePath, "-F", "qcow2", overlayPath])
     }

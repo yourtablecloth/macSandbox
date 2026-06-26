@@ -13,10 +13,10 @@
 
 import Foundation
 
-/// 베이스라인 1-round 빌드 오케스트레이터
+/// Baseline 1-round build orchestrator
 ///
-/// 디스크 생성 → UEFI 변수 준비 → 무인 응답 ISO 생성 → QEMU 무인 설치 →
-/// (게스트 종료 = 설치 완료) → 메타데이터 저장.
+/// Create disk → prepare UEFI variables → generate unattended answer ISO → QEMU unattended install →
+/// (guest shutdown = install complete) → save metadata.
 enum BuildError: LocalizedError {
     case installFailed(String)
     var errorDescription: String? {
@@ -32,22 +32,22 @@ final class BaselineBuilder: ObservableObject {
     @Published private(set) var phase: BuildPhase = .idle
     @Published private(set) var detail: String = ""
     @Published private(set) var isRunning = false
-    /// 설치가 진행 중일 때의 인터랙티브 콘솔(화면 + 키보드/마우스 개입). 유휴 시 nil.
+    /// Interactive console while the install is in progress (screen + keyboard/mouse intervention). nil when idle.
     @Published var console: VMConsole?
-    /// 로그는 별도 스로틀링 스토어 — 빌더를 관찰하는 뷰가 로그 줄마다 재렌더되지 않게 분리.
+    /// Logs use a separate throttling store — kept apart so views observing the builder don't re-render on every log line.
     let logBuffer = LogBuffer()
 
-    /// 로그가 추가될 때마다 호출 (헤드리스/CLI에서 stdout 출력용)
+    /// Called whenever a log is appended (for stdout output in headless/CLI)
     var logHandler: ((String) -> Void)?
 
     private let disk = DiskService()
     private let unattend = UnattendBuilder()
     private let runtime = QEMURuntime()
 
-    /// 설치 타임아웃 (기본 60분)
+    /// Install timeout (default 60 minutes)
     private let installTimeout: TimeInterval = 60 * 60
 
-    // MARK: - 베이스라인 조회
+    // MARK: - Baseline lookup
 
     func currentBaseline() -> BaselineMetadata? {
         guard let data = try? Data(contentsOf: SandboxPaths.baselineMetadataPath) else { return nil }
@@ -56,7 +56,7 @@ final class BaselineBuilder: ObservableObject {
         return try? decoder.decode(BaselineMetadata.self, from: data)
     }
 
-    // MARK: - 빌드
+    // MARK: - Build
 
     func build(config: InstallConfig, headless: Bool = false) async {
         guard !isRunning else { return }
@@ -64,9 +64,9 @@ final class BaselineBuilder: ObservableObject {
         logBuffer.clear()
         defer { isRunning = false }
 
-        // 백그라운드 단계(미디어 빌드/다운로드)가 메인 액터로 로그를 넘기는 공용 싱크.
-        // weak self를 지역 let으로 스냅샷한 뒤 Task로 넘긴다(가변 약참조를 동시성 클로저에서
-        // 직접 참조하면 일부 Swift 버전이 에러로 처리 — @MainActor 클래스라 Optional도 Sendable).
+        // Shared sink through which background stages (media build/download) hand logs to the main actor.
+        // Snapshot weak self into a local let before passing it to a Task (referencing a mutable weak reference
+        // directly in a concurrency closure is treated as an error by some Swift versions — being a @MainActor class, even the Optional is Sendable).
         let logSink: @Sendable (String) -> Void = { [weak self] msg in
             let me = self
             Task { @MainActor in me?.appendLog(msg) }
@@ -75,14 +75,14 @@ final class BaselineBuilder: ObservableObject {
         do {
             try SandboxPaths.ensureBaseDirectories()
 
-            // 0. 사전 점검 — 늦게(설치 수십 분 후) 터질 실패를 앞당겨 명확히 알린다.
-            //    배포 중 qcow2 실사용이 10~20GB까지 커지고 부트디스크 1.3GB + virtio ISO 0.7GB가 추가된다.
+            // 0. Pre-checks — surface failures that would otherwise blow up late (tens of minutes into the install) early and clearly.
+            //    During deployment, qcow2 actual usage grows up to 10–20GB, plus a 1.3GB boot disk + 0.7GB virtio ISO.
             try checkFreeDiskSpace(minimumBytes: 24_000_000_000)
             guard FileManager.default.isReadableFile(atPath: config.isoPath) else {
                 throw BuildError.installFailed("ISO is not readable: \(config.isoPath)")
             }
 
-            // 1. 베이스라인 디렉토리 초기화 (단일 베이스라인 정책: 기존 교체)
+            // 1. Initialize the baseline directory (single-baseline policy: replace the existing one)
             updatePhase(.preparingDisk, L("build.detail.cleanup"))
             let baselineDir = SandboxPaths.baselineDir
             if FileManager.default.fileExists(atPath: baselineDir.path) {
@@ -104,7 +104,7 @@ final class BaselineBuilder: ObservableObject {
             )
             try saveMetadata(meta)
 
-            // 2. qcow2 NVMe 타깃 디스크 생성 (qemu-img 프로세스 — 메인 스레드 밖에서)
+            // 2. Create the qcow2 NVMe target disk (qemu-img process — off the main thread)
             updatePhase(.preparingDisk, L("build.detail.disk", config.diskSizeGB))
             let diskService = disk
             try await Task.detached(priority: .userInitiated) {
@@ -112,16 +112,16 @@ final class BaselineBuilder: ObservableObject {
             }.value
             appendLog("Disk created: \(diskPath)")
 
-            // 3. UEFI 펌웨어 확인
+            // 3. Verify UEFI firmware
             updatePhase(.preparingFirmware, L("build.detail.firmware"))
             guard let efiCode = SandboxPaths.edk2CodeFirmware(),
                   let varsTemplate = SandboxPaths.edk2VarsTemplate() else {
                 throw QEMURuntime.RuntimeError.firmwareNotFound
             }
 
-            // 4. WinPE DISM 배포 매체 생성 (GPT FAT32 부트디스크 — boot.wim 편집)
-            //    hdiutil/wimlib/diskutil 동기 작업으로 수 분 걸린다 — 메인 스레드를 막으면
-            //    런루프 정지(IMK mach port 오류·응답 없음)로 이어지므로 반드시 백그라운드에서.
+            // 4. Create WinPE DISM deployment media (GPT FAT32 boot disk — editing boot.wim)
+            //    This takes several minutes via synchronous hdiutil/wimlib/diskutil work — blocking the main thread
+            //    leads to a run-loop stall (IMK mach port errors / unresponsive), so it must run in the background.
             updatePhase(.generatingUnattend, L("build.detail.media"))
             let bootDisk = baselineDir.appendingPathComponent("wpe-boot.img").path
             let mediaInputs = WinPEDeployMediaBuilder.Inputs(
@@ -135,13 +135,13 @@ final class BaselineBuilder: ObservableObject {
 
             let serialLog = headless ? baselineDir.appendingPathComponent("uefi-serial.log").path : nil
 
-            // 4.5 virtio-win 드라이버 ISO 확보 — 캐시 없으면 ~700MB 다운로드(역시 백그라운드).
+            // 4.5 Obtain the virtio-win driver ISO — if not cached, downloads ~700MB (also in the background).
             updatePhase(.generatingUnattend, L("build.detail.drivers"))
             let virtioISO = try await Task.detached(priority: .userInitiated) {
                 try GuestDrivers.ensureVirtioWinISO(onLog: logSink)
             }.value
 
-            // 5. Phase 1 — WinPE 배포 (프롬프트·키 입력 0, 완전 결정론적)
+            // 5. Phase 1 — WinPE deployment (zero prompts/key input, fully deterministic)
             updatePhase(.installing, L("build.detail.phase1"))
             let efiVarsDeploy = baselineDir.appendingPathComponent("efi-vars-deploy.fd").path
             try FileManager.default.copyItem(atPath: varsTemplate.path, toPath: efiVarsDeploy)
@@ -161,7 +161,7 @@ final class BaselineBuilder: ObservableObject {
                 throw BuildError.installFailed("Disk after deploy is only \(deployedSize / 1_000_000)MB — DISM apply may have failed.")
             }
 
-            // 6. Phase 2 — 첫 부팅 구성 (specialize/oobe → 첫 로그온 후 shutdown)
+            // 6. Phase 2 — first-boot configuration (specialize/oobe → shutdown after first logon)
             updatePhase(.installing, L("build.detail.phase2"))
             let efiVarsOobe = SandboxPaths.baselineEfiVarsPath.path
             if FileManager.default.fileExists(atPath: efiVarsOobe) { try FileManager.default.removeItem(atPath: efiVarsOobe) }
@@ -176,7 +176,7 @@ final class BaselineBuilder: ObservableObject {
                 throw BuildError.installFailed("OOBE phase exited abnormally (exit=\(oobeExit)).")
             }
 
-            // 7. 마무리
+            // 7. Finalize
             updatePhase(.finalizing, L("build.detail.finalize"))
             try? FileManager.default.removeItem(atPath: bootDisk)
             try? FileManager.default.removeItem(atPath: efiVarsDeploy)
@@ -205,8 +205,8 @@ final class BaselineBuilder: ObservableObject {
 
     // MARK: - Private
 
-    /// 한 QEMU 단계를 실행한다. 인터랙티브 콘솔(화면 모니터링 + 사용자 개입)을 띄우고
-    /// 프로세스 종료까지 대기한다. (배포/OOBE 모두 부팅 프롬프트가 없어 키 주입 불필요)
+    /// Runs one QEMU phase. Brings up an interactive console (screen monitoring + user intervention)
+    /// and waits until the process exits. (Both deploy/OOBE have no boot prompt, so no key injection is needed.)
     private func runPhase(name: String, headless: Bool,
                           argsBuilder: (String) -> [String]) async throws -> Int32 {
         let qmpSocket = "/tmp/msbx-\(UUID().uuidString.prefix(8)).sock"
@@ -232,7 +232,7 @@ final class BaselineBuilder: ObservableObject {
         self.detail = detail
     }
 
-    /// 베이스라인 저장 볼륨의 여유 공간 점검(측정 실패 시 통과 — 설치 단계에서 자연 실패).
+    /// Checks free space on the baseline storage volume (passes if measurement fails — it would fail naturally during the install stage).
     private func checkFreeDiskSpace(minimumBytes: Int64) throws {
         let values = try? URL(fileURLWithPath: NSHomeDirectory())
             .resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])

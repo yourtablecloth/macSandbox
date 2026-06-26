@@ -13,13 +13,13 @@
 
 import Foundation
 
-/// QEMU(qemu-system-aarch64) 프로세스 생명주기 + 설치 모드 인자 빌드
+/// QEMU (qemu-system-aarch64) process lifecycle + install-mode argument building
 ///
-/// 드라이버리스 설치 구성:
-/// - 시스템 디스크: NVMe (Windows ARM 인박스 stornvme 드라이버)
-/// - 설치/응답 미디어: USB 매스스토리지 (WinPE 인박스 usbstor 드라이버)
-/// - 디스플레이: ramfb (UEFI GOP 프레임버퍼 → Windows 기본 디스플레이, 게스트 드라이버 불필요)
-/// - 가속: HVF (Hypervisor.framework)
+/// Driverless install configuration:
+/// - System disk: NVMe (Windows ARM inbox stornvme driver)
+/// - Install/answer media: USB mass storage (WinPE inbox usbstor driver)
+/// - Display: ramfb (UEFI GOP framebuffer → Windows default display, no guest driver needed)
+/// - Acceleration: HVF (Hypervisor.framework)
 final class QEMURuntime {
 
     enum RuntimeError: LocalizedError {
@@ -58,12 +58,12 @@ final class QEMURuntime {
         return watchdog
     }
 
-    /// 부모-사망 워치독.
+    /// Parent-death watchdog.
     ///
-    /// macOS엔 `PR_SET_PDEATHSIG`가 없어 앱이 SIGKILL/크래시되면 자식 QEMU가 orphan으로 남는다.
-    /// 앱(부모) PID와 QEMU PID를 동시에 폴링하는 작은 감시 프로세스를 띄워, **앱이 사라지면**
-    /// QEMU를 TERM→KILL로 확실히 파괴한다(앱이 죽어도 이 감시 프로세스는 살아남아 정리 수행).
-    /// QEMU가 먼저 죽으면 루프가 끝나 스스로 종료한다.
+    /// macOS has no `PR_SET_PDEATHSIG`, so if the app is SIGKILLed/crashes, the child QEMU is left as an orphan.
+    /// We spawn a small monitor process that polls both the app (parent) PID and the QEMU PID, and **once the app disappears**
+    /// it reliably destroys QEMU via TERM→KILL (even if the app dies, this monitor process survives to perform cleanup).
+    /// If QEMU dies first, the loop ends and it exits on its own.
     private func spawnWatchdog(qemuPID: Int32) {
         let appPID = ProcessInfo.processInfo.processIdentifier
         let script = """
@@ -80,16 +80,16 @@ final class QEMURuntime {
         wd.standardOutput = FileHandle.nullDevice
         wd.standardError = FileHandle.nullDevice
         do {
-            try wd.run()           // 자식이지만 앱이 죽으면 launchd로 reparent되어 계속 폴링 → orphan 제거
+            try wd.run()           // a child, but if the app dies it gets reparented to launchd and keeps polling → removes the orphan
             storeWatchdog(wd)
         } catch {
             storeWatchdog(nil)
         }
     }
 
-    // MARK: - WinPE DISM 배포 인자
+    // MARK: - WinPE DISM deployment arguments
 
-    /// 공통 베이스 인자 (머신/가속/CPU/메모리/UEFI/디스플레이/네트워크/QMP)
+    /// Common base arguments (machine/acceleration/CPU/memory/UEFI/display/network/QMP)
     private func baseArguments(
         name: String, efiCodePath: String, efiVarsPath: String,
         cpuCores: Int, memoryMB: Int, qmpSocketPath: String, serialLogPath: String?
@@ -113,8 +113,8 @@ final class QEMURuntime {
         return args
     }
 
-    /// Phase 1 (배포): GPT FAT32 WinPE 부트디스크 + Windows ISO(install.wim) + 빈 NVMe 타깃.
-    /// WinPE가 프롬프트 없이 부팅해 deploy.cmd로 diskpart+dism+bcdboot 실행 후 shutdown.
+    /// Phase 1 (deploy): GPT FAT32 WinPE boot disk + Windows ISO (install.wim) + empty NVMe target.
+    /// WinPE boots without a prompt and runs diskpart+dism+bcdboot via deploy.cmd, then shuts down.
     func buildDeployArguments(
         bootDiskPath: String, windowsISOPath: String, nvmePath: String,
         efiCodePath: String, efiVarsPath: String, virtioISOPath: String? = nil,
@@ -122,19 +122,19 @@ final class QEMURuntime {
     ) -> [String] {
         var args = baseArguments(name: "MacSandbox-Deploy", efiCodePath: efiCodePath, efiVarsPath: efiVarsPath,
                                  cpuCores: cpuCores, memoryMB: memoryMB, qmpSocketPath: qmpSocketPath, serialLogPath: serialLogPath)
-        // 타깃 NVMe (diskpart의 disk 0)
+        // Target NVMe (diskpart's disk 0)
         args += ["-drive", "if=none,id=sysdisk,format=qcow2,file=\(nvmePath)"]
         args += ["-device", "nvme,drive=sysdisk,serial=s0"]
         args += ["-device", "qemu-xhci,id=usb"]
         args += ["-device", "usb-kbd"]
         args += ["-device", "usb-tablet"]
-        // GPT FAT32 WinPE 부트디스크 (펌웨어 자동 부팅)
+        // GPT FAT32 WinPE boot disk (firmware auto-boot)
         args += ["-drive", "if=none,id=wpe,format=raw,file=\(bootDiskPath)"]
         args += ["-device", "usb-storage,drive=wpe,bootindex=0"]
-        // Windows ISO (install.wim 소스)
+        // Windows ISO (install.wim source)
         args += ["-drive", "if=none,id=iso,media=cdrom,readonly=on,file=\(windowsISOPath)"]
         args += ["-device", "usb-storage,drive=iso"]
-        // virtio-win 드라이버 ISO (deploy.cmd가 dism /Add-Driver로 오프라인 주입)
+        // virtio-win driver ISO (deploy.cmd injects it offline via dism /Add-Driver)
         if let virtioISOPath {
             args += ["-drive", "if=none,id=virtio,media=cdrom,readonly=on,file=\(virtioISOPath)"]
             args += ["-device", "usb-storage,drive=virtio"]
@@ -142,8 +142,8 @@ final class QEMURuntime {
         return args
     }
 
-    /// Phase 2 (OOBE): 배포된 NVMe만으로 부팅 → specialize/oobe → 첫 로그온 후 shutdown.
-    /// 펌웨어가 NVMe ESP의 \\EFI\\BOOT\\BOOTAA64.EFI(=bootmgfw, 배포 시 복사됨)를 자동 부팅.
+    /// Phase 2 (OOBE): boot from the deployed NVMe alone → specialize/oobe → shutdown after first logon.
+    /// The firmware auto-boots \\EFI\\BOOT\\BOOTAA64.EFI on the NVMe ESP (=bootmgfw, copied during deployment).
     func buildOobeArguments(
         nvmePath: String, efiCodePath: String, efiVarsPath: String,
         cpuCores: Int, memoryMB: Int, qmpSocketPath: String, serialLogPath: String? = nil
@@ -158,7 +158,7 @@ final class QEMURuntime {
         return args
     }
 
-    /// 일회용 샌드박스 실행 인자. 베이스라인 COW 오버레이를 부팅하고 SandboxConfig를 장치로 번역.
+    /// Disposable sandbox run arguments. Boots the baseline COW overlay and translates the SandboxConfig into devices.
     func buildSandboxArguments(
         overlayPath: String, efiCodePath: String, efiVarsPath: String,
         config: SandboxConfig, configDiskPath: String?, rdpHostPort: Int,
@@ -169,11 +169,11 @@ final class QEMURuntime {
         args += ["-machine", "virt,highmem=on,gic-version=3"]
         args += ["-accel", "hvf"]
         args += ["-cpu", "host"]
-        // vCPU: 최소 2(Windows 11 ARM 최소 + 납득 가능한 성능), 호스트엔 최소 2코어를 남김.
+        // vCPU: at least 2 (Windows 11 ARM minimum + acceptable performance), and leave at least 2 cores for the host.
         let hostCores = ProcessInfo.processInfo.activeProcessorCount
         let cores = max(2, min(config.cpuCores, max(2, hostCores - 2)))
         args += ["-smp", "\(cores)"]
-        // 메모리: 최소 4GB(Win11 ARM 최소) 보장 + 호스트에 최소 4GB 남김(과할당 방지).
+        // Memory: guarantee at least 4GB (Win11 ARM minimum) + leave at least 4GB for the host (prevents over-allocation).
         let hostMB = Int(ProcessInfo.processInfo.physicalMemory / (1024 * 1024))
         let mem = min(max(4096, config.memoryMB), max(4096, hostMB - 4096))
         args += ["-m", "\(mem)"]
@@ -181,37 +181,37 @@ final class QEMURuntime {
         args += ["-drive", "if=pflash,format=raw,readonly=on,file=\(efiCodePath)"]
         args += ["-drive", "if=pflash,format=raw,file=\(efiVarsPath)"]
 
-        // 시스템 디스크 — 베이스라인 위 COW 오버레이 (NVMe)
+        // System disk — COW overlay on top of the baseline (NVMe)
         args += ["-drive", "if=none,id=sysdisk,format=qcow2,file=\(overlayPath)"]
         args += ["-device", "nvme,drive=sysdisk,serial=s0"]
 
-        // USB 컨트롤러 + 입력
+        // USB controller + input
         args += ["-device", "qemu-xhci,id=usb"]
         args += ["-device", "usb-kbd"]
         args += ["-device", "usb-tablet"]
 
-        // 디스플레이 — vGPU(virtio-gpu, 드라이버 필요) 또는 ramfb(드라이버리스). VNC 프레임버퍼.
+        // Display — vGPU (virtio-gpu, driver needed) or ramfb (driverless). VNC framebuffer.
         args += ["-device", config.vGpuEnabled ? "virtio-gpu-pci" : "ramfb"]
         args += ["-display", "none"]
         args += ["-vnc", "127.0.0.1:1"]
 
-        // 네트워킹 — user-mode NAT + 호스트 RDP 포트포워딩(127.0.0.1:rdpHostPort → 게스트 3389).
-        // RDP 하이브리드: 콘솔(VNC)로 부팅을 보고, FreeRDP로 상호작용(폴더/클립보드/마이크/프린터).
-        // networking 비활성 시 restrict=on으로 인터넷은 차단하되 RDP 포워딩은 유지한다.
-        // 게스트 측 동작은 NetKVM(virtio-net) 드라이버 필요 — 베이스라인에 주입됨.
+        // Networking — user-mode NAT + host RDP port forwarding (127.0.0.1:rdpHostPort → guest 3389).
+        // RDP hybrid: watch boot via the console (VNC), and interact via FreeRDP (folders/clipboard/mic/printer).
+        // When networking is disabled, restrict=on blocks the internet but keeps RDP forwarding.
+        // Guest-side operation requires the NetKVM (virtio-net) driver — injected into the baseline.
         var netdev = "user,id=net0,hostfwd=tcp:127.0.0.1:\(rdpHostPort)-:3389"
         if !config.networkingEnabled { netdev += ",restrict=on" }
         args += ["-netdev", netdev]
         args += ["-device", "virtio-net-pci,netdev=net0"]
 
-        // 오디오(마이크) — coreaudio 백엔드 + HDA(게스트 드라이버 필요, best-effort)
+        // Audio (microphone) — coreaudio backend + HDA (guest driver needed, best-effort)
         if config.audioInputEnabled {
             args += ["-audiodev", "coreaudio,id=snd0"]
             args += ["-device", "intel-hda"]
             args += ["-device", "hda-duplex,audiodev=snd0"]
         }
 
-        // 설정 디스크(LogonCommand/매핑 정보 전달용 FAT) — 베이스라인 로그온 에이전트가 읽음
+        // Config disk (FAT for passing LogonCommand/mapping info) — read by the baseline logon agent
         if let configDiskPath {
             args += ["-drive", "if=none,id=cfg,format=raw,file=\(configDiskPath)"]
             args += ["-device", "usb-storage,drive=cfg,removable=on"]
@@ -223,12 +223,12 @@ final class QEMURuntime {
         return args
     }
 
-    // MARK: - 실행
+    // MARK: - Run
 
-    /// QEMU를 실행하고 프로세스가 종료될 때까지 대기.
-    /// QEMU는 게스트 재부팅을 in-place로 처리하고 **게스트 전원 종료(shutdown)에서만 프로세스가 종료**되므로,
-    /// 반환 = Windows 무인 설치가 완료되어 종료되었음을 의미한다.
-    /// - Returns: QEMU 프로세스 exit code
+    /// Runs QEMU and waits until the process exits.
+    /// QEMU handles guest reboots in-place and **the process only exits on guest power-off (shutdown)**, so
+    /// returning means the Windows unattended install completed and shut down.
+    /// - Returns: the QEMU process exit code
     func runUntilExit(
         arguments: [String],
         qmpSocketPath: String,
@@ -275,7 +275,7 @@ final class QEMURuntime {
                 outPipe.fileHandleForReading.readabilityHandler = nil
                 errPipe.fileHandleForReading.readabilityHandler = nil
                 try? FileManager.default.removeItem(atPath: qmpSocketPath)
-                self?.currentWatchdog()?.terminate()  // QEMU 정상 종료 → 워치독도 정리
+                self?.currentWatchdog()?.terminate()  // QEMU exited normally → clean up the watchdog too
                 self?.storeWatchdog(nil)
                 self?.storeProcess(nil)
                 if resumed.set() { cont.resume(returning: finished.terminationStatus) }
@@ -284,7 +284,7 @@ final class QEMURuntime {
             do {
                 try proc.run()
                 onOutput("QEMU process started (PID \(proc.processIdentifier))\n")
-                spawnWatchdog(qemuPID: proc.processIdentifier)  // 앱 강제종료 시 VM orphan 방지
+                spawnWatchdog(qemuPID: proc.processIdentifier)  // prevents VM orphans if the app is force-quit
             } catch {
                 timeout.cancel()
                 if resumed.set() { cont.resume(throwing: error) }
@@ -292,17 +292,17 @@ final class QEMURuntime {
         }
     }
 
-    /// 강제 종료 (사용자 취소). QEMU에 SIGTERM → VM 즉시 종료.
+    /// Force stop (user cancellation). SIGTERM to QEMU → VM shuts down immediately.
     func forceStop() {
         currentProcess()?.terminate()
     }
 }
 
-/// 컨티뉴에이션 1회성 재개 보장용 스레드 세이프 플래그
+/// Thread-safe flag that guarantees a one-time continuation resume
 final class OneShotFlag: @unchecked Sendable {
     private var done = false
     private let lock = NSLock()
-    /// 최초 호출에만 true, 이후 false
+    /// true only on the first call, false thereafter
     func set() -> Bool {
         lock.lock(); defer { lock.unlock() }
         if done { return false }

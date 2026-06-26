@@ -14,7 +14,7 @@
 import SwiftUI
 import AppKit
 
-/// '앱 정보' 대화상자 — 브랜드/버전/라이선스(이중 라이선스)/서드파티 구성요소를 보여준다.
+/// 'About' dialog — shows brand/version/license (dual license)/third-party components.
 struct AboutView: View {
     private var version: String {
         let v = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
@@ -66,7 +66,7 @@ struct AboutView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// LICENSING.md를 연다 — .app 번들 Resources 우선, 개발 환경은 실행 파일 상위에서 탐색.
+    /// Opens LICENSING.md — prefers the .app bundle Resources, falling back to searching above the executable in dev environments.
     private func openLicensingDocument() {
         let fm = FileManager.default
         var candidates: [URL] = []

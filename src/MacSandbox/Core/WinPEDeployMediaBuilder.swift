@@ -13,16 +13,16 @@
 
 import Foundation
 
-/// WinPE 기반 DISM 배포 매체(GPT FAT32 부트 디스크) 빌더.
+/// Builder for WinPE-based DISM deployment media (a GPT FAT32 boot disk).
 ///
-/// 완전 결정론적 설치의 핵심:
-/// - ISO의 WinPE(boot.wim, image 2)를 wimlib로 편집해 setup.exe 대신 배포 스크립트(deploy.cmd)를 실행
-/// - GPT 파티션 FAT32 디스크에 bootmgfw.efi + (ISO의)BCD + boot.sdi + 편집된 boot.wim 패키징
+/// The core of fully deterministic installation:
+/// - Edit the ISO's WinPE (boot.wim, image 2) with wimlib so it runs a deployment script (deploy.cmd) instead of setup.exe
+/// - Package bootmgfw.efi + (the ISO's) BCD + boot.sdi + the edited boot.wim onto a GPT-partitioned FAT32 disk
 ///
-/// 이 디스크로 부팅하면 **El Torito "Press any key" 프롬프트 없이, 키 입력 없이** WinPE가 떠서
-/// `diskpart` → `dism /Apply-Image` → `bcdboot` 로 결정론적으로 Windows를 배포한다.
+/// Booting from this disk brings up WinPE **without the El Torito "Press any key" prompt and without any key press**, and it
+/// deterministically deploys Windows via `diskpart` → `dism /Apply-Image` → `bcdboot`.
 ///
-/// (왜 GPT인가: bootmgr는 `[boot]` 장치를 실제 파티션으로 매핑해야 하므로 슈퍼플로피 FAT은 "No mapping"으로 실패한다.)
+/// (Why GPT: bootmgr must map the `[boot]` device to a real partition, so a superfloppy FAT fails with "No mapping".)
 enum WinPEDeployMediaBuilder {
 
     enum DeployMediaError: LocalizedError {
@@ -40,15 +40,15 @@ enum WinPEDeployMediaBuilder {
         }
     }
 
-    /// 배포 매체 생성 파라미터
+    /// Parameters for creating the deployment media
     struct Inputs {
         var isoPath: String
-        var imageEdition: String          // dism /Name (예: "Windows 11 Pro")
-        var pantherUnattendXML: String    // 배포 후 W:\Windows\Panther\unattend.xml로 복사될 specialize/oobe 응답
-        var bootDiskPath: String          // 생성할 GPT FAT32 디스크 이미지 경로
+        var imageEdition: String          // dism /Name (e.g. "Windows 11 Pro")
+        var pantherUnattendXML: String    // specialize/oobe answer to be copied to W:\Windows\Panther\unattend.xml after deployment
+        var bootDiskPath: String          // path of the GPT FAT32 disk image to create
     }
 
-    /// GPT FAT32 배포 부트 디스크를 생성한다.
+    /// Create the GPT FAT32 deployment boot disk.
     static func build(_ inputs: Inputs, onLog: @escaping (String) -> Void) throws {
         guard let wimlib = SandboxPaths.wimlibBinary() else {
             throw DeployMediaError.toolNotFound("wimlib-imagex (brew install wimlib)")
@@ -59,7 +59,7 @@ enum WinPEDeployMediaBuilder {
         try fm.createDirectory(at: work, withIntermediateDirectories: true)
         defer { try? fm.removeItem(at: work) }
 
-        // 1) ISO 마운트
+        // 1) Mount ISO
         onLog("Mounting ISO...")
         let mountPoint = try mountISO(inputs.isoPath)
         var isoDetached = false
@@ -72,7 +72,7 @@ enum WinPEDeployMediaBuilder {
         let isoBootSdi = (mountPoint as NSString).appendingPathComponent("boot/boot.sdi")
         let isoFonts = (mountPoint as NSString).appendingPathComponent("efi/microsoft/boot/fonts")
 
-        // 2) 범용 bootmgfw.efi 추출 (ISO의 \efi\boot\bootaa64.efi는 cdboot라 디스크 부팅 불가)
+        // 2) Extract the general-purpose bootmgfw.efi (the ISO's \efi\boot\bootaa64.efi is cdboot, which can't boot from disk)
         onLog("Extracting bootmgfw.efi...")
         try run(wimlib.path, ["extract", installWim, "2", "/Windows/Boot/EFI/bootmgfw.efi",
                               "--dest-dir=\(work.path)", "--no-acls"])
@@ -81,7 +81,7 @@ enum WinPEDeployMediaBuilder {
             throw DeployMediaError.commandFailed("bootmgfw.efi extraction produced no output")
         }
 
-        // 3) boot.wim 복사 + 편집 (image 2: winpeshl.ini → deploy.cmd)
+        // 3) Copy + edit boot.wim (image 2: winpeshl.ini → deploy.cmd)
         onLog("Editing WinPE (boot.wim)...")
         let editedWim = work.appendingPathComponent("boot.wim").path
         try fm.copyItem(atPath: isoBootWim, toPath: editedWim)
@@ -104,7 +104,7 @@ enum WinPEDeployMediaBuilder {
         """
         try runWithStdin(wimlib.path, ["update", editedWim, "2"], stdin: updateCommands)
 
-        // 4) GPT FAT32 디스크 생성
+        // 4) Create the GPT FAT32 disk
         onLog("Creating GPT FAT32 boot disk...")
         try createBlankImage(at: inputs.bootDiskPath, sizeMB: 1300)
         let dev = try attachRawNoMount(inputs.bootDiskPath)
@@ -117,7 +117,7 @@ enum WinPEDeployMediaBuilder {
         _ = try runCapture("/usr/sbin/diskutil", ["mount", part])
         let mp = try mountPointOf(part)
 
-        // 5) 부트 파일 복사
+        // 5) Copy boot files
         onLog("Copying boot files...")
         let fmCopy: (String, String) throws -> Void = { src, dstRel in
             let dst = (mp as NSString).appendingPathComponent(dstRel)
@@ -133,7 +133,7 @@ enum WinPEDeployMediaBuilder {
             try? fm.copyItem(atPath: isoFonts, toPath: (mp as NSString).appendingPathComponent("EFI/Microsoft/Boot/fonts"))
         }
 
-        // macOS AppleDouble 정리
+        // Clean up macOS AppleDouble files
         if let enumerator = fm.enumerator(atPath: mp) {
             for case let f as String in enumerator where (f as NSString).lastPathComponent.hasPrefix("._") {
                 try? fm.removeItem(atPath: (mp as NSString).appendingPathComponent(f))
@@ -146,7 +146,7 @@ enum WinPEDeployMediaBuilder {
         onLog("Deployment boot disk ready")
     }
 
-    /// ISO 안 install.wim의 설치 가능한 에디션(이미지 Name) 목록을 반환한다.
+    /// Return the list of installable editions (image Names) in the ISO's install.wim.
     static func listImageEditions(isoPath: String) throws -> [String] {
         guard let wimlib = SandboxPaths.wimlibBinary() else {
             throw DeployMediaError.toolNotFound("wimlib-imagex (brew install wimlib)")
@@ -165,31 +165,31 @@ enum WinPEDeployMediaBuilder {
         return editions
     }
 
-    // MARK: - 스크립트 생성
+    // MARK: - Script generation
 
-    /// 제거할 기본 제공(프로비저닝) 앱 키워드 — 게임/미디어/프로모션류.
-    /// findstr /i의 공백 구분 OR 매칭으로 PackageName 부분일치 제거. 핵심 앱(Store,
-    /// DesktopAppInstaller, Photos, Paint, SnippingTool, Calculator, Notepad, Terminal)은 보존.
+    /// Keywords for built-in (provisioned) apps to remove — games/media/promotional ones.
+    /// findstr /i's space-separated OR matching removes PackageName partial matches. Core apps (Store,
+    /// DesktopAppInstaller, Photos, Paint, SnippingTool, Calculator, Notepad, Terminal) are preserved.
     static let removeAppxKeywords = [
-        "Clipchamp",                  // 영상 편집기
-        "SolitaireCollection",        // 카드 게임
-        "GamingApp", "Xbox",          // Xbox 앱/오버레이/ID 공급자 일체
-        "ZuneMusic", "ZuneVideo",     // 미디어 플레이어 / 영화 및 TV
-        "BingNews", "BingWeather",    // 뉴스/날씨
-        "Teams", "MSTeams",           // Teams 소비자용
-        "OfficeHub",                  // Office 프로모션
-        "OutlookForWindows",          // 새 Outlook(프로모션 설치)
-        "FeedbackHub", "GetHelp", "Getstarted",  // 피드백/도움말/팁
-        "Todos", "People", "YourPhone",          // To Do/연락처/휴대폰 연결
+        "Clipchamp",                  // video editor
+        "SolitaireCollection",        // card game
+        "GamingApp", "Xbox",          // all Xbox app/overlay/ID provider components
+        "ZuneMusic", "ZuneVideo",     // media player / Movies & TV
+        "BingNews", "BingWeather",    // news/weather
+        "Teams", "MSTeams",           // Teams (consumer)
+        "OfficeHub",                  // Office promotion
+        "OutlookForWindows",          // new Outlook (promotional install)
+        "FeedbackHub", "GetHelp", "Getstarted",  // feedback/help/tips
+        "Todos", "People", "YourPhone",          // To Do/contacts/Phone Link
         "PowerAutomateDesktop", "DevHome", "QuickAssist",
-        "SoundRecorder", "WindowsCamera",        // 녹음기/카메라
-        "windowscommunicationsapps",             // 구 메일/캘린더
-        "549981C3F5F10",                         // Cortana(구버전 잔재)
+        "SoundRecorder", "WindowsCamera",        // Sound Recorder/Camera
+        "windowscommunicationsapps",             // legacy Mail/Calendar
+        "549981C3F5F10",                         // Cortana (legacy remnant)
     ]
 
     static func deployCmdContent(imageEdition: String) -> String {
         let removeFilter = removeAppxKeywords.joined(separator: " ")
-        // CRLF 줄바꿈
+        // CRLF line breaks
         let lines = [
             "@echo off",
             "wpeinit",
@@ -201,14 +201,14 @@ enum WinPEDeployMediaBuilder {
             "set VIRT=",
             "for %%d in (C D E F G H I J K) do if exist %%d:\\NetKVM set VIRT=%%d:",
             "if defined VIRT echo [virtio-win=%VIRT%] & dism /Image:W:\\ /Add-Driver /Driver:%VIRT%\\ /Recurse /ForceUnsigned",
-            // 오프라인 정책: Edge 최초 실행 경험(FRE) 비활성화 — SOFTWARE 하이브를 로드해
-            // HKLM\...\Policies\Microsoft\Edge!HideFirstRunExperience=1 주입(결정론적, 부팅 전 적용).
+            // Offline policy: disable the Edge first-run experience (FRE) — load the SOFTWARE hive and
+            // inject HKLM\...\Policies\Microsoft\Edge!HideFirstRunExperience=1 (deterministic, applied before boot).
             "echo === Edge first-run policy ===",
             "reg load HKLM\\MSBXSOFT W:\\Windows\\System32\\config\\SOFTWARE",
             "reg add HKLM\\MSBXSOFT\\Policies\\Microsoft\\Edge /v HideFirstRunExperience /t REG_DWORD /d 1 /f",
             "reg unload HKLM\\MSBXSOFT || (ping -n 3 127.0.0.1 >nul & reg unload HKLM\\MSBXSOFT)",
-            // 기본 제공 불필요 앱 제거(오프라인 프로비저닝 해제) — 게임/미디어/프로모션류.
-            // 첫 로그온 전에 제거하므로 사용자 프로필에 설치 자체가 안 된다(빠르고 결정론적).
+            // Remove unwanted built-in apps (offline deprovisioning) — games/media/promotional ones.
+            // Removed before the first logon, so they are never installed into the user profile (fast and deterministic).
             "echo === Remove provisioned inbox apps ===",
             "for /f \"tokens=3\" %%P in ('dism /English /Image:W:\\ /Get-ProvisionedAppxPackages ^| findstr /b /c:\"PackageName\" ^| findstr /i \"\(removeFilter)\"') do dism /Image:W:\\ /Remove-ProvisionedAppxPackage /PackageName:%%P",
             "md W:\\Windows\\Panther",
@@ -225,7 +225,7 @@ enum WinPEDeployMediaBuilder {
     }
 
     static func diskpartScript() -> String {
-        // 대상 = disk 0 (QEMU에서 NVMe가 PCI로 먼저 열거되어 disk 0)
+        // Target = disk 0 (in QEMU the NVMe is enumerated first on PCI, so it's disk 0)
         let lines = [
             "select disk 0", "clean", "convert gpt",
             "create partition efi size=200", "format quick fs=fat32 label=ESP", "assign letter=S",
@@ -236,11 +236,11 @@ enum WinPEDeployMediaBuilder {
         return lines.joined(separator: "\r\n") + "\r\n"
     }
 
-    // MARK: - macOS 도구 헬퍼
+    // MARK: - macOS tool helpers
 
     private static func mountISO(_ isoPath: String) throws -> String {
         let out = try runCapture("/usr/bin/hdiutil", ["attach", "-nobrowse", "-readonly", isoPath])
-        // "/dev/diskN ... /Volumes/NAME" 형태에서 마지막 컬럼(마운트 지점) 추출
+        // Extract the last column (mount point) from a "/dev/diskN ... /Volumes/NAME" line
         for line in out.split(separator: "\n") {
             if let range = line.range(of: "/Volumes/") {
                 return String(line[range.lowerBound...]).trimmingCharacters(in: .whitespaces)

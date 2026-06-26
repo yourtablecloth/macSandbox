@@ -13,11 +13,11 @@
 
 import Foundation
 
-/// 일회용 샌드박스 실행 오케스트레이터.
+/// Disposable sandbox run orchestrator.
 ///
-/// 베이스라인 → COW 오버레이 + 신선한 UEFI 변수 → (설정 디스크) → QEMU 부팅 →
-/// 사용자 사용 → 종료 시 disposable이면 오버레이/변수/설정디스크 폐기.
-/// 샌드박스 실행 상태. 뷰 라우팅/표시는 문자열 비교가 아닌 이 enum으로 판단한다(i18n 안전).
+/// baseline → COW overlay + fresh UEFI variables → (config disk) → QEMU boot →
+/// user usage → on exit, if disposable, discard the overlay/variables/config disk.
+/// Sandbox run state. View routing/display is decided by this enum rather than string comparison (i18n-safe).
 enum SandboxRunState: Equatable {
     case idle
     case preparing
@@ -41,17 +41,17 @@ final class SandboxRunner: ObservableObject {
 
     @Published private(set) var isRunning = false
     @Published private(set) var state: SandboxRunState = .idle
-    /// 부팅 시작 시각(경과 시간 표시용). booting 진입 시 설정.
+    /// Boot start time (for elapsed-time display). Set when entering the booting state.
     @Published private(set) var bootStartedAt: Date?
     @Published var console: VMConsole?
-    /// 로그는 별도 스로틀링 스토어 — 러너를 관찰하는 뷰가 로그 줄마다 재렌더되지 않게 분리.
+    /// Logs go in a separate throttling store — kept apart so views observing the runner don't re-render on every log line.
     let logBuffer = LogBuffer()
 
     var status: String { state.label }
-    /// 현재 RDP 포워딩 포트(127.0.0.1:rdpPort → 게스트 3389). 0이면 미설정.
-    /// 인앱 임베드 RDP 뷰(RDPHostView)가 이 포트로 연결한다.
+    /// Current RDP forwarding port (127.0.0.1:rdpPort → guest 3389). 0 means unset.
+    /// The in-app embedded RDP view (RDPHostView) connects to this port.
     @Published private(set) var rdpPort: Int = 0
-    /// 현재 실행 중 구성(.wsb 반영). RDP 뷰가 리다이렉션 기능 게이팅에 사용.
+    /// The configuration currently running (reflects the .wsb). Used by the RDP view to gate redirection features.
     @Published private(set) var activeConfig = SandboxConfig()
 
     private let disk = DiskService()
@@ -64,7 +64,7 @@ final class SandboxRunner: ObservableObject {
         return meta.status == .ready && fm.fileExists(atPath: meta.diskPath)
     }
 
-    // MARK: - 실행
+    // MARK: - Execution
 
     func start(config: SandboxConfig) async {
         guard !isRunning else { return }
@@ -86,9 +86,9 @@ final class SandboxRunner: ObservableObject {
 
         do {
             try SandboxPaths.ensureBaseDirectories()
-            cleanStaleOverlays()   // 이전 강제종료로 남은 일회용 오버레이 정리(단일 인스턴스 전제)
+            cleanStaleOverlays()   // clean up disposable overlays left over from a previous force-quit (assumes a single instance)
 
-            // 1. COW 오버레이 + 신선한 UEFI 변수 (qemu-img — 메인 스레드 밖에서)
+            // 1. COW overlay + fresh UEFI variables (qemu-img — off the main thread)
             state = .preparing
             let diskService = disk
             let basePath = meta.diskPath
@@ -102,8 +102,8 @@ final class SandboxRunner: ObservableObject {
             try fm.copyItem(atPath: varsTemplate.path, toPath: efiVarsPath)
             appendLog("COW overlay: \(overlayPath)")
 
-            // 2. (선택) 설정 디스크 — 공유 폴더 자동 마운트(mklink) + LogonCommand 전달.
-            //    hdiutil/newfs/diskutil 동기 작업(수 초) — 메인 스레드 밖에서.
+            // 2. (Optional) config disk — auto-mount shared folders (mklink) + deliver LogonCommand.
+            //    hdiutil/newfs/diskutil synchronous work (a few seconds) — off the main thread.
             if !config.logonCommand.isEmpty || !config.mappedFolders.isEmpty {
                 let path = SandboxPaths.overlaysDir.appendingPathComponent("\(id)-cfg.img").path
                 let script = buildLogonScript(config: config)
@@ -114,7 +114,7 @@ final class SandboxRunner: ObservableObject {
                 appendLog("Config disk: \(config.mappedFolders.count) mount(s), logon command \(config.logonCommand.isEmpty ? "absent" : "present")")
             }
 
-            // 3. QEMU 실행 (부팅 모니터링용 VNC 콘솔) + RDP 포트포워딩
+            // 3. Run QEMU (VNC console for boot monitoring) + RDP port forwarding
             state = .booting
             bootStartedAt = Date()
             let qmpSocket = "/tmp/msbx-run-\(id).sock"
@@ -129,9 +129,9 @@ final class SandboxRunner: ObservableObject {
             self.console = console
             console.start()
 
-            // QEMU를 백그라운드로 실행한다. 게스트 RDP는 인앱 임베드 뷰(RDPHostView)가
-            // rdpPort로 연결해 렌더한다(외부 FreeRDP 창 없음). 임베드 엔진이 게스트 부팅을
-            // 기다리며 연결을 재시도하므로 별도의 RDP 런처는 필요 없다.
+            // Run QEMU in the background. Guest RDP is rendered by the in-app embedded view (RDPHostView),
+            // which connects via rdpPort (no external FreeRDP window). The embedded engine waits for the guest
+            // to boot and retries the connection, so no separate RDP launcher is needed.
             let qemuTask = Task { () -> Int32 in
                 try await self.runtime.runUntilExit(
                     arguments: args, qmpSocketPath: qmpSocket, timeoutSeconds: 24 * 60 * 60
@@ -141,7 +141,7 @@ final class SandboxRunner: ObservableObject {
                 }
             }
 
-            // 샌드박스는 사용자가 종료하거나 게스트가 종료될 때까지 실행
+            // The sandbox runs until the user quits or the guest shuts down
             let exit = (try? await qemuTask.value) ?? -1
             console.stop()
             self.console = nil
@@ -156,7 +156,7 @@ final class SandboxRunner: ObservableObject {
         }
         bootStartedAt = nil
 
-        // 4. 일회용 정리
+        // 4. Disposable cleanup
         if config.disposable {
             try? fm.removeItem(atPath: overlayPath)
             try? fm.removeItem(atPath: efiVarsPath)
@@ -165,7 +165,7 @@ final class SandboxRunner: ObservableObject {
         }
     }
 
-    /// 샌드박스 종료 (disposable이므로 강제 종료해도 무방)
+    /// Shut down the sandbox (it's disposable, so force-quitting is fine)
     func stop() {
         runtime.forceStop()
         appendLog("Stop requested")
@@ -173,8 +173,8 @@ final class SandboxRunner: ObservableObject {
 
     // MARK: - Private
 
-    /// 일회용 오버레이 디렉토리의 잔류 파일 정리. 앱이 강제종료/크래시되면 정상 정리 코드가
-    /// 못 돌아 오버레이가 남으므로(워치독은 QEMU만 죽임), 다음 시작 때 비운다(단일 인스턴스 전제).
+    /// Clean up leftover files in the disposable overlay directory. If the app is force-quit/crashes, the normal cleanup code
+    /// doesn't run and overlays remain (the watchdog only kills QEMU), so empty it on the next start (assumes a single instance).
     private func cleanStaleOverlays() {
         let dir = SandboxPaths.overlaysDir
         guard let items = try? fm.contentsOfDirectory(atPath: dir.path) else { return }
@@ -183,9 +183,9 @@ final class SandboxRunner: ObservableObject {
         }
     }
 
-    /// 베이스라인 로그온 에이전트가 실행할 macsandbox-logon.cmd 본문 생성.
-    /// 공유 폴더를 게스트에 마운트(mklink /D 바탕화면\리프 또는 SandboxFolder → \\tsclient\드라이브)한 뒤
-    /// 사용자 LogonCommand를 실행한다(Windows Sandbox와 동일 순서: 폴더 매핑 → 로그온 명령).
+    /// Build the body of macsandbox-logon.cmd that the baseline logon agent runs.
+    /// Mounts the shared folders in the guest (mklink /D Desktop\leaf or SandboxFolder → \\tsclient\drive), then
+    /// runs the user's LogonCommand (same order as Windows Sandbox: folder mapping → logon command).
     private func buildLogonScript(config: SandboxConfig) -> String {
         let mounts = config.resolvedMounts()
         var lines = ["@echo off"]
@@ -194,7 +194,7 @@ final class SandboxRunner: ObservableObject {
         }
         if !config.logonCommand.isEmpty { lines.append(config.logonCommand) }
         if !mounts.isEmpty {
-            // 서브루틴: rdpdr 드라이브가 준비될 때까지 대기 후 심볼릭 링크 생성(local→remote 심링크 평가는 기본 허용).
+            // Subroutine: wait until the rdpdr drive is ready, then create a symlink (local→remote symlink evaluation is allowed by default).
             lines += [
                 "goto :eof", "",
                 ":mount", "setlocal",
@@ -207,7 +207,7 @@ final class SandboxRunner: ObservableObject {
                 "ping -n 2 127.0.0.1 >nul",
                 "goto :w",
                 ":l",
-                // 심링크 우선(개발자 모드면 비상승도 가능 → 폴더처럼 마운트). 실패 시 바로가기(.lnk) 폴백.
+                // Prefer a symlink (possible without elevation in Developer Mode → mounts like a folder). Fall back to a shortcut (.lnk) on failure.
                 "if not exist \"%~2\" if not exist \"%~2.lnk\" mklink /D \"%~2\" \"%SRC%\" >nul 2>&1",
                 "if not exist \"%~2\" if not exist \"%~2.lnk\" powershell -NoProfile -Command \"$s=(New-Object -ComObject WScript.Shell).CreateShortcut('%~2.lnk');$s.TargetPath='%SRC%';$s.Save()\"",
                 ":e", "endlocal", "goto :eof",
@@ -216,17 +216,17 @@ final class SandboxRunner: ObservableObject {
         return lines.joined(separator: "\r\n") + "\r\n"
     }
 
-    /// 로그온 cmd를 숨은 콘솔(SW_HIDE)에서 실행하는 VBScript 런처.
-    /// 레지스트리 Run 항목이 wscript로 이 vbs를 띄우면, 자신과 같은 드라이브의
-    /// macsandbox-logon.cmd를 창 없이(0) 실행하고 끝날 때까지 대기(True)한다 → Windows Sandbox처럼 콘솔이 안 보임.
+    /// VBScript launcher that runs the logon cmd in a hidden console (SW_HIDE).
+    /// When the registry Run entry launches this vbs with wscript, it runs macsandbox-logon.cmd from its own drive
+    /// windowlessly (0) and waits until it finishes (True) → the console stays hidden, like Windows Sandbox.
     nonisolated private static let logonVBS =
         "Dim p, d\r\n" +
         "p = WScript.ScriptFullName\r\n" +
         "d = Left(p, InStrRev(p, \"\\\"))\r\n" +
         "CreateObject(\"WScript.Shell\").Run \"cmd /c \"\"\" & d & \"macsandbox-logon.cmd\"\"\", 0, True\r\n"
 
-    /// 로그온 스크립트를 담은 작은 FAT16 설정 디스크 생성 (베이스라인 로그온 에이전트가 읽음).
-    /// 셸 도구(hdiutil/newfs/diskutil)만 쓰는 순수 함수 — 백그라운드 태스크에서 호출된다.
+    /// Create a small FAT16 config disk holding the logon script (read by the baseline logon agent).
+    /// A pure function that only uses shell tools (hdiutil/newfs/diskutil) — called from a background task.
     nonisolated private static func makeConfigDisk(script: String, at path: String) throws {
         let fm = FileManager.default
         if fm.fileExists(atPath: path) { try fm.removeItem(atPath: path) }
@@ -252,7 +252,7 @@ final class SandboxRunner: ObservableObject {
         }
         try script.write(toFile: (mp as NSString).appendingPathComponent("macsandbox-logon.cmd"),
                          atomically: true, encoding: .utf8)
-        // 숨은 콘솔 런처 — 레지스트리 Run 항목이 이 vbs를 wscript로 띄워 .cmd를 창 없이 실행한다.
+        // Hidden console launcher — the registry Run entry launches this vbs with wscript to run the .cmd windowlessly.
         try logonVBS.write(toFile: (mp as NSString).appendingPathComponent("macsandbox-logon.vbs"),
                            atomically: true, encoding: .utf8)
         _ = try? shellCapture("/usr/sbin/diskutil", ["unmount", dev])

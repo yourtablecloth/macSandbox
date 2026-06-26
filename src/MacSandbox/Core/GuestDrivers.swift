@@ -13,14 +13,14 @@
 
 import Foundation
 
-/// 게스트(Windows ARM64) virtio 드라이버 제공.
-/// virtio-win ISO를 캐시에 없으면 자동 다운로드한다(네트워킹/vGPU 등 virtio 장치 동작에 필요).
+/// Provides guest (Windows ARM64) virtio drivers.
+/// Automatically downloads the virtio-win ISO if not cached (required for virtio devices like networking/vGPU to work).
 enum GuestDrivers {
 
     static let downloadURL =
         "https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/virtio-win.iso"
 
-    /// virtio-win ISO 경로를 보장한다. 없으면 다운로드.
+    /// Ensures the virtio-win ISO path. Downloads it if absent.
     static func ensureVirtioWinISO(onLog: @escaping (String) -> Void) throws -> String {
         let fm = FileManager.default
         let dest = SandboxPaths.virtioWinISO

@@ -13,25 +13,25 @@
 
 import SwiftUI
 
-/// Windows 라이선스 확인 체크리스트 — 베이스 이미지 빌드를 시작할 때마다 표시한다.
+/// Windows license confirmation checklist — shown every time a base image build is started.
 ///
-/// 근거(Microsoft 라이선스 문서):
-/// - Windows 11 EULA "가상 환경에서의 사용": 라이선스 1개 = 물리/가상 불문 장치 1대의
-///   인스턴스 1개. 추가 가상 장치는 별도 라이선스 필요.
-/// - OEM 라이선스는 원래 기기에 귀속 — 일반적으로 별도 가상화 사용권 없음.
-/// - 리테일(FPP) 라이선스는 단일 사용자에게 할당된 개인 장치의 VM에 사용 가능.
-///   조직의 가상 데스크톱(VDI) 접근은 VDA 또는 Microsoft 365 E3+ 등 별도 라이선스 필요.
+/// Rationale (Microsoft licensing documents):
+/// - Windows 11 EULA "Use in a virtualized environment": one license = one
+///   instance on one device, physical or virtual. Additional virtual devices require separate licenses.
+/// - OEM licenses are bound to the original hardware — generally no separate virtualization use rights.
+/// - Retail (FPP) licenses may be used in a VM on a personal device assigned to a single user.
+///   Organizational virtual desktop (VDI) access requires a separate license such as VDA or Microsoft 365 E3+.
 struct LicenseChecklistView: View {
     @Environment(\.dismiss) private var dismiss
-    /// 모든 항목 동의 후 '동의하고 빌드 시작'을 누르면 호출된다.
+    /// Called when 'Agree and start build' is pressed after agreeing to all items.
     let onConfirm: () -> Void
 
     private static let itemKeys = [
-        "license.item.noOS",        // 이 앱은 OS/키/사용권을 제공하지 않음
-        "license.item.ownLicense",  // 공식 ISO + 적법한 라이선스 보유
-        "license.item.vmRights",    // 1라이선스=1인스턴스, OEM의 VM 사용 제약 확인
-        "license.item.personalUse", // 개인 리테일은 개인 기기·가정 범위, 조직 VDI는 VDA 등 필요
-        "license.item.eula",        // EULA·정품 인증 준수 책임은 사용자에게
+        "license.item.noOS",        // This app does not provide an OS/key/usage rights
+        "license.item.ownLicense",  // Official ISO + a valid license held
+        "license.item.vmRights",    // 1 license = 1 instance; confirm OEM VM-usage restrictions
+        "license.item.personalUse", // Personal retail is scoped to personal devices/home use; organizational VDI requires VDA, etc.
+        "license.item.eula",        // Responsibility for EULA/activation compliance is the user's
     ]
     @State private var checked = Array(repeating: false, count: itemKeys.count)
 

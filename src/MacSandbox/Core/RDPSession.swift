@@ -14,24 +14,24 @@
 import Foundation
 import Darwin
 
-/// FreeRDP(sdl-freerdp) 기반 샌드박스 상호작용 세션.
+/// FreeRDP(sdl-freerdp)-based sandbox interaction session.
 ///
-/// RDP 하이브리드: 부팅 모니터링은 VNC 콘솔로, 사용자 상호작용은 FreeRDP 창으로 한다.
-/// FreeRDP가 폴더 공유(`/drive`)·클립보드(`+clipboard`)·마이크(`/microphone`)·
-/// 프린터(`/printer`)·오디오 출력(`/sound`) 리다이렉션을 제공한다.
-/// (웹캠 리다이렉션은 이 FreeRDP 빌드에서 미지원 — RDPECAM 채널 없음.)
+/// RDP hybrid: boot monitoring is done via the VNC console, and user interaction via the FreeRDP window.
+/// FreeRDP provides shared-folder (`/drive`), clipboard (`+clipboard`), microphone (`/microphone`),
+/// printer (`/printer`), and audio output (`/sound`) redirection.
+/// (Webcam redirection is unsupported in this FreeRDP build — no RDPECAM channel.)
 @MainActor
 final class RDPSession {
 
     private var process: Process?
     private(set) var port: Int = 0
 
-    /// 게스트 RDP 서버 로그온 계정(베이스라인이 WDAGUtilityAccount 자동 로그온/RDP 허용으로 구성됨)
+    /// Guest RDP server logon account (the baseline is configured with WDAGUtilityAccount auto-logon / RDP allowed)
     static let user = "WDAGUtilityAccount"
 
-    // MARK: - 포트 예약
+    // MARK: - Port reservation
 
-    /// 127.0.0.1에서 바인드 가능한(사용 가능한) TCP 포트를 찾는다. 기본 13389부터 탐색.
+    /// Find a bindable (available) TCP port on 127.0.0.1. Search starting from 13389 by default.
     static func reserveLocalPort(preferred: Int = 13389) -> Int {
         for candidate in preferred..<(preferred + 64) {
             if isPortFree(candidate) { return candidate }
@@ -57,57 +57,57 @@ final class RDPSession {
         return bound == 0
     }
 
-    // MARK: - 인자 빌드
+    // MARK: - Argument build
 
-    /// SandboxConfig → FreeRDP 인자. blank-password RDP(NLA off)로 자동 로그온한다.
+    /// SandboxConfig → FreeRDP arguments. Auto-logs on via blank-password RDP (NLA off).
     static func buildArgs(config: SandboxConfig, port: Int) -> [String] {
         var args: [String] = []
         args.append("/v:127.0.0.1:\(port)")
         args.append("/u:\(SandboxCreds.username)")
-        args.append("/p:\(SandboxCreds.password)")  // 고정 내부 암호 — 신뢰성 있는 credential auto-logon
-        args.append("/sec:tls")             // TLS 보안 — 서버가 RDP-only는 SSL_REQUIRED로 거부, NLA는 우회
+        args.append("/p:\(SandboxCreds.password)")  // fixed internal password — reliable credential auto-logon
+        args.append("/sec:tls")             // TLS security — the server rejects RDP-only with SSL_REQUIRED, and this bypasses NLA
         args.append("/cert:ignore")
-        // 고정 크기 창으로 띄운다. /dynamic-resolution은 SDL 클라이언트에서 디스플레이 전체 크기로
-        // 열렸다가 축소되는 전체화면 전환을 유발하므로 쓰지 않는다. +smart-sizing으로 창 리사이즈 시 스케일.
+        // Open in a fixed-size window. Avoid /dynamic-resolution because on the SDL client it triggers a
+        // fullscreen transition that opens at the full display size and then shrinks. Use +smart-sizing to scale on window resize.
         args.append("/w:1440")
         args.append("/h:900")
         args.append("+smart-sizing")
         args.append("/title:MacSandbox")
 
-        // 클립보드
+        // Clipboard
         if config.clipboardEnabled { args.append("+clipboard") } else { args.append("-clipboard") }
 
-        // 공유 폴더 — 각 매핑을 named drive로. 게스트에서 \\tsclient\<name> 또는 리다이렉트 드라이브로 보임.
+        // Shared folders — each mapping as a named drive. Appears in the guest as \\tsclient\<name> or a redirected drive.
         for (idx, folder) in config.mappedFolders.enumerated() where !folder.hostPath.isEmpty {
             let name = shareName(for: folder, index: idx)
             args.append("/drive:\(name),\(folder.hostPath)")
         }
 
-        // 마이크(오디오 입력) + 오디오 출력
+        // Microphone (audio input) + audio output
         if config.audioInputEnabled {
             args.append("/microphone")
             args.append("/sound")
         }
 
-        // 프린터 리다이렉트
+        // Printer redirection
         if config.printerEnabled { args.append("/printer") }
 
         return args
     }
 
-    /// 매핑 폴더의 RDP 공유 이름 (게스트에서 보일 이름). 호스트 폴더명 기반, 충돌 시 인덱스 부가.
+    /// RDP share name for a mapped folder (the name shown in the guest). Based on the host folder name, with an index appended on collision.
     private static func shareName(for folder: MappedFolder, index: Int) -> String {
         let base = (folder.hostPath as NSString).lastPathComponent
         let cleaned = base.unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) }.map(String.init).joined()
         return cleaned.isEmpty ? "Shared\(index + 1)" : cleaned
     }
 
-    // MARK: - 실행
+    // MARK: - Execution
 
     private var stopped = false
 
-    /// FreeRDP를 한 번 실행하고 종료 코드를 반환한다(프로세스 종료까지 await).
-    /// - onConnected: 실제 RDP 세션이 확립된 시점(동적 채널 로드)에 1회 호출. 부팅 화면→RDP 전환 신호.
+    /// Run FreeRDP once and return its exit code (awaits until the process terminates).
+    /// - onConnected: Called once when the actual RDP session is established (dynamic channel load). Signals the boot-screen → RDP transition.
     func run(config: SandboxConfig, port: Int,
              onLog: @escaping (String) -> Void,
              onConnected: (() -> Void)? = nil) async throws -> Int32 {
@@ -124,7 +124,7 @@ final class RDPSession {
         let out = Pipe(); let err = Pipe()
         proc.standardOutput = out
         proc.standardError = err
-        // 세션 확립 감지: 동적 가상 채널 로드(rdpgfx 등) 라인이 보이면 연결된 것으로 간주.
+        // Session-established detection: when a dynamic virtual channel load line (rdpgfx, etc.) appears, treat it as connected.
         let connected = OneShotFlag()
         let sink: (String) -> Void = { t in
             onLog("[rdp] \(t)")
@@ -164,7 +164,7 @@ final class RDPSession {
         }
     }
 
-    /// FreeRDP 창 강제 종료. 이후 재시도 루프가 멈추도록 stopped 플래그를 세운다.
+    /// Force-quit the FreeRDP window. Sets the stopped flag so any subsequent retry loop halts.
     func stop() {
         stopped = true
         process?.terminate()

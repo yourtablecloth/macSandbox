@@ -13,8 +13,8 @@
 
 import SwiftUI
 
-/// 스로틀링 로그 표시 패널.
-/// LogBuffer만 관찰하므로 로그가 갱신돼도 부모 뷰(부팅 오버레이/빌드 화면)는 재렌더되지 않는다.
+/// Throttled log display pane.
+/// It observes only the LogBuffer, so the parent views (boot overlay/build screen) are not re-rendered when the log updates.
 struct LogPane: View {
     @ObservedObject var buffer: LogBuffer
     var height: CGFloat = 160

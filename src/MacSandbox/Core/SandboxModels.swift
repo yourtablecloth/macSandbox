@@ -13,19 +13,19 @@
 
 import Foundation
 
-/// 베이스라인 1-round 설치에 사용하는 설정.
-/// 기본값은 시중 표준 맥북 에어 사양(8코어 · 16GB · 256GB)을 기준으로 잡는다.
+/// Settings used for the baseline 1-round installation.
+/// Defaults are based on standard retail MacBook Air specs (8 cores · 16GB · 256GB).
 struct InstallConfig {
     var isoPath: String
     var diskSizeGB: Int = 256
     var cpuCores: Int = 8
     var memoryMB: Int = 16384
     var locale: String = "ko-KR"
-    /// DISM이 적용할 install.wim 에디션 이름 (`dism /Name`). WIM 이미지 이름은 보통 영어 고정.
+    /// install.wim edition name that DISM will apply (`dism /Name`). The WIM image name is usually fixed in English.
     var imageEdition: String = "Windows 11 Pro"
 }
 
-/// 단일 베이스라인 메타데이터 (metadata.json으로 저장)
+/// Single baseline metadata (saved as metadata.json)
 struct BaselineMetadata: Codable {
     var name: String
     var diskPath: String
@@ -48,7 +48,7 @@ struct BaselineMetadata: Codable {
     }
 }
 
-/// 베이스라인 빌드 진행 단계
+/// Baseline build progress phases
 enum BuildPhase: Equatable {
     case idle
     case preparingDisk

@@ -13,14 +13,14 @@
 
 import Foundation
 
-/// Windows Sandbox `.wsb`(XML) 구성 파일 → SandboxConfig 변환 + 커맨드라인 스위치 파싱.
+/// Windows Sandbox `.wsb` (XML) configuration file → SandboxConfig conversion + command-line switch parsing.
 ///
-/// `.wsb` 스키마(Windows Sandbox와 호환): `<Configuration>` 아래
+/// `.wsb` schema (Windows Sandbox-compatible): under `<Configuration>`,
 /// `VGpu`/`Networking`/`AudioInput`/`VideoInput`/`ClipboardRedirection`/`PrinterRedirection`
-/// (값: `Enable`|`Disable`|`Default`), `MemoryInMB`, `LogonCommand><Command`,
+/// (values: `Enable`|`Disable`|`Default`), `MemoryInMB`, `LogonCommand><Command`,
 /// `MappedFolders><MappedFolder><HostFolder`/`ReadOnly`.
-/// 시작은 Windows Sandbox 표준 기본값(`SandboxConfig()`)이고, 파일/스위치에 명시된 항목만 덮어쓴다.
-/// (HostFolder는 macOS 호스트 경로로 해석한다.)
+/// Starts from the Windows Sandbox standard defaults (`SandboxConfig()`) and overrides only the items specified in the file/switches.
+/// (HostFolder is interpreted as a macOS host path.)
 enum WSBConfig {
 
     enum WSBError: LocalizedError {
@@ -32,7 +32,7 @@ enum WSBConfig {
         }
     }
 
-    /// `.wsb` 파일을 읽어 SandboxConfig로 변환.
+    /// Read a `.wsb` file and convert it to a SandboxConfig.
     static func load(path: String) throws -> SandboxConfig {
         let url = URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
         guard let data = try? Data(contentsOf: url) else {
@@ -44,7 +44,7 @@ enum WSBConfig {
         return parse(doc: doc)
     }
 
-    /// XMLDocument → SandboxConfig (기본값에서 명시 항목만 덮어쓰기)
+    /// XMLDocument → SandboxConfig (override only the specified items from the defaults)
     static func parse(doc: XMLDocument) -> SandboxConfig {
         var c = SandboxConfig()
         guard let root = doc.rootElement() else { return c }
@@ -53,7 +53,7 @@ enum WSBConfig {
             parent.elements(forName: name).first?.stringValue?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
         }
-        /// Enable/Disable/Default 3-상태. Default(또는 미지정/미인식)면 nil → 기본값 유지.
+        /// Enable/Disable/Default tri-state. Default (or unspecified/unrecognized) → nil → keep the default value.
         func tri(_ name: String) -> Bool? {
             guard let v = text(name, in: root)?.lowercased() else { return nil }
             switch v {
@@ -70,7 +70,7 @@ enum WSBConfig {
         if let v = tri("ClipboardRedirection") { c.clipboardEnabled = v }
         if let v = tri("PrinterRedirection") { c.printerEnabled = v }
         if let m = text("MemoryInMB", in: root), let mb = Int(m) { c.memoryMB = mb }
-        if let m = text("CpuCores", in: root), let n = Int(m) { c.cpuCores = n }  // 확장(WS엔 없음)
+        if let m = text("CpuCores", in: root), let n = Int(m) { c.cpuCores = n }  // extension (not in WS)
 
         if let lc = root.elements(forName: "LogonCommand").first,
            let cmd = text("Command", in: lc), !cmd.isEmpty {
@@ -80,7 +80,7 @@ enum WSBConfig {
             for folder in mf.elements(forName: "MappedFolder") {
                 guard let host = text("HostFolder", in: folder), !host.isEmpty else { continue }
                 let ro = text("ReadOnly", in: folder)?.lowercased() == "true"
-                let sandbox = text("SandboxFolder", in: folder) ?? ""  // 비우면 바탕화면 자동 마운트
+                let sandbox = text("SandboxFolder", in: folder) ?? ""  // if empty, auto-mount on the Desktop
                 c.mappedFolders.append(MappedFolder(
                     hostPath: (host as NSString).expandingTildeInPath, readOnly: ro, sandboxPath: sandbox))
             }
@@ -88,7 +88,7 @@ enum WSBConfig {
         return c
     }
 
-    /// 불리언 스위치 값 파싱 (on/off/true/false/enable/disable/1/0). 인식 실패 시 true(존재=켜짐).
+    /// Parse a boolean switch value (on/off/true/false/enable/disable/1/0). On failure to recognize, true (present = on).
     static func boolFlag(_ s: String) -> Bool {
         switch s.lowercased() {
         case "off", "false", "0", "disable", "no", "n": return false
@@ -96,7 +96,7 @@ enum WSBConfig {
         }
     }
 
-    /// 사람이 읽는 한 줄 요약 (UI/로그용)
+    /// Human-readable one-line summary (for UI/logs)
     static func summaryLines(_ c: SandboxConfig) -> [(String, String)] {
         var rows: [(String, String)] = [
             ("Memory", "\(c.memoryMB) MB"),

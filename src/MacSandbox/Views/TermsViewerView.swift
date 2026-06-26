@@ -13,14 +13,14 @@
 
 import SwiftUI
 
-/// 사용 약관 뷰어 — 메뉴에서 언제든 열 수 있는 읽기 전용 다이얼로그(동의 게이트와 별개).
-/// 언어 선택 메뉴로 번들된 모든 언어 버전(en/ko/ja/de/es/fr)을 볼 수 있다.
+/// Terms of use viewer — a read-only dialog that can be opened from the menu at any time (separate from the consent gate).
+/// All bundled language versions (en/ko/ja/de/es/fr) can be viewed via the language selection menu.
 struct TermsViewerView: View {
     @Environment(\.dismiss) private var dismiss
-    /// 처음엔 현재 앱 언어로 표시, 사용자가 메뉴로 전환 가능.
+    /// Initially shown in the current app language; the user can switch it via the menu.
     @State private var language: String = currentLanguageCode()
 
-    /// 약관 뷰어가 제공하는 언어 목록(자동 제외 — 구체 언어만).
+    /// The list of languages the terms viewer offers (auto excluded — concrete languages only).
     private let languages = AppLanguage.allCases.filter { $0 != .auto }
 
     private var terms: String {
@@ -49,7 +49,7 @@ struct TermsViewerView: View {
             ScrollView {
                 MarkdownView(markdown: terms)
                     .padding(.trailing, 6)
-                    .id(language)   // 언어 전환 시 스크롤을 맨 위로 리셋
+                    .id(language)   // Reset scroll to the top when the language changes
             }
             .frame(maxHeight: .infinity)
             .padding(12)
@@ -62,7 +62,7 @@ struct TermsViewerView: View {
             }
         }
         .padding(20)
-        // 창 크기 조절로 본문이 폭에 맞춰 word-wrap된다(읽기 편한 기본값 + 자유 리사이즈).
+        // Resizing the window word-wraps the body to the width (readable defaults + free resizing).
         .frame(minWidth: 520, idealWidth: 700, maxWidth: .infinity,
                minHeight: 460, idealHeight: 640, maxHeight: .infinity)
     }

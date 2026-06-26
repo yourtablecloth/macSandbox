@@ -13,23 +13,23 @@
 
 import Foundation
 
-/// `.wsb` 파일 열기를 한 곳으로 모으는 코디네이터.
+/// Coordinator that funnels `.wsb` file opening into one place.
 ///
-/// Finder 파일 연결(앱 델리게이트 `application(_:open:)`)과 인앱 "구성(.wsb)..." 버튼이
-/// 모두 여기를 호출한다. ContentView가 `token` 변화를 관찰해, 파싱에 성공하면 곧바로 새
-/// 샌드박스를 시작(베이스라인 준비 + 미실행 시)하고, 실패하면 오류를 표시한다.
+/// Both the Finder file association (app delegate `application(_:open:)`) and the in-app "Configuration (.wsb)..." button
+/// call here. ContentView observes changes to `token`, and on successful parsing immediately starts a new
+/// sandbox (baseline ready + when not running), or shows an error on failure.
 @MainActor
 final class OpenWSB: ObservableObject {
     static let shared = OpenWSB()
     private init() {}
 
-    /// 열기 요청 토큰. 단조 증가 — 같은 파일을 다시 열어도 ContentView가 처리하게 한다.
+    /// Open-request token. Monotonically increasing — lets ContentView handle re-opening the same file again.
     @Published private(set) var token = 0
-    /// 마지막 요청의 파싱 결과(둘 중 하나만 유효).
+    /// Parsing result of the last request (only one of the two is valid).
     private(set) var pendingConfig: SandboxConfig?
     private(set) var errorMessage: String?
 
-    /// `.wsb` URL을 파싱해 결과를 게시(성공=pendingConfig, 실패=errorMessage). 토큰 증가로 통지.
+    /// Parses a `.wsb` URL and publishes the result (success=pendingConfig, failure=errorMessage). Notifies by incrementing the token.
     func open(_ urls: [URL]) {
         let wsb = urls.first { $0.pathExtension.lowercased() == "wsb" } ?? urls.first
         guard let url = wsb else { return }
@@ -37,7 +37,7 @@ final class OpenWSB: ObservableObject {
             let cfg = try WSBConfig.load(path: url.path)
             pendingConfig = cfg
             errorMessage = nil
-            AppLaunch.shared.markExplicit(cfg)   // effectiveConfig()가 이 구성을 쓰도록(런치 경로 포함)
+            AppLaunch.shared.markExplicit(cfg)   // so effectiveConfig() uses this configuration (including the launch path)
         } catch {
             pendingConfig = nil
             errorMessage = error.localizedDescription

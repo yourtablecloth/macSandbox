@@ -13,14 +13,14 @@
 
 import Foundation
 
-/// 앱 지원 디렉토리 및 번들 리소스(QEMU 바이너리/펌웨어) 경로 해석
+/// Resolves the app support directory and bundle resource (QEMU binaries/firmware) paths
 ///
-/// 개발 환경에서는 실행 파일에서 상위로 올라가며 `vendor/qemu`를 찾고,
-/// 배포(.app) 환경에서는 번들 리소스 내부를 우선 탐색합니다.
+/// In a development environment, it walks up from the executable to find `vendor/qemu`,
+/// and in a distribution (.app) environment, it searches inside the bundle resources first.
 enum SandboxPaths {
     static let fileManager = FileManager.default
 
-    // MARK: - App Support 디렉토리
+    // MARK: - App Support directory
 
     /// ~/Library/Application Support/MacSandbox
     static var appSupport: URL {
@@ -28,16 +28,16 @@ enum SandboxPaths {
         return base.appendingPathComponent("MacSandbox", isDirectory: true)
     }
 
-    /// 단일 베이스라인 디렉토리 (고정 경로)
+    /// Single baseline directory (fixed path)
     static var baselineDir: URL { appSupport.appendingPathComponent("baseline", isDirectory: true) }
-    /// 샌드박스 COW 오버레이 디렉토리 (런타임용, 향후 사용)
+    /// Sandbox COW overlay directory (for runtime, future use)
     static var overlaysDir: URL { appSupport.appendingPathComponent("overlays", isDirectory: true) }
 
     static var baselineDiskPath: URL { baselineDir.appendingPathComponent("baseline.qcow2") }
     static var baselineEfiVarsPath: URL { baselineDir.appendingPathComponent("efi-vars.fd") }
     static var baselineMetadataPath: URL { baselineDir.appendingPathComponent("metadata.json") }
 
-    /// 기본 Windows ISO (사용자 다운로드 폴더)
+    /// Default Windows ISO (user's Downloads folder)
     static var defaultISO: URL {
         fileManager.homeDirectoryForCurrentUser
             .appendingPathComponent("Downloads/Win11_25H2_Korean_Arm64_v2.iso")
@@ -49,9 +49,9 @@ enum SandboxPaths {
         }
     }
 
-    // MARK: - Vendor QEMU 해석
+    // MARK: - Vendor QEMU resolution
 
-    /// vendor/qemu 디렉토리 (.app 번들 또는 개발 환경 프로젝트 루트)
+    /// vendor/qemu directory (.app bundle or development-environment project root)
     static func vendorQemuDir() -> URL? {
         if let resourcePath = Bundle.main.resourcePath {
             let inBundle = URL(fileURLWithPath: resourcePath).appendingPathComponent("vendor/qemu")
@@ -70,11 +70,11 @@ enum SandboxPaths {
     static func qemuSystemBinary() -> URL? { binary(named: "qemu-system-aarch64") }
     static func qemuImgBinary() -> URL? { binary(named: "qemu-img") }
 
-    /// wimlib-imagex (WinPE 배포 매체 빌드에 필요, `brew install wimlib`)
+    /// wimlib-imagex (needed to build the WinPE deployment media, `brew install wimlib`)
     static func wimlibBinary() -> URL? { brewBinary("wimlib-imagex") }
 
-    /// FreeRDP 클라이언트 (샌드박스 RDP 리다이렉션, `brew install freerdp`).
-    /// macOS는 X11 없는 sdl-freerdp 우선.
+    /// FreeRDP client (sandbox RDP redirection, `brew install freerdp`).
+    /// On macOS, prefer the X11-free sdl-freerdp.
     static func freerdpBinary() -> URL? {
         for name in ["sdl-freerdp3", "sdl-freerdp", "xfreerdp3", "xfreerdp"] {
             if let url = brewBinary(name) { return url }
@@ -94,7 +94,7 @@ enum SandboxPaths {
         return nil
     }
 
-    /// 게스트 드라이버 디렉토리 + virtio-win ISO 캐시 경로
+    /// Guest driver directory + virtio-win ISO cache path
     static var driversDir: URL { appSupport.appendingPathComponent("drivers", isDirectory: true) }
     static var virtioWinISO: URL { driversDir.appendingPathComponent("virtio-win.iso") }
 
@@ -110,9 +110,9 @@ enum SandboxPaths {
         return nil
     }
 
-    /// UEFI 코드 펌웨어 (읽기 전용 pflash)
+    /// UEFI code firmware (read-only pflash)
     static func edk2CodeFirmware() -> URL? { firmware(named: "edk2-aarch64-code.fd") }
-    /// UEFI 변수 템플릿 (복사해서 쓰기 가능 pflash로 사용)
+    /// UEFI variable template (copied and used as a writable pflash)
     static func edk2VarsTemplate() -> URL? { firmware(named: "edk2-arm-vars.fd") }
 
     private static func firmware(named name: String) -> URL? {
@@ -127,7 +127,7 @@ enum SandboxPaths {
         return nil
     }
 
-    /// QEMU 실행 시 필요한 환경 변수 (번들 dylib/데이터 경로)
+    /// Environment variables needed when running QEMU (bundle dylib/data paths)
     static func qemuEnvironment() -> [String: String] {
         var env = ProcessInfo.processInfo.environment
         if let vendor = vendorQemuDir() {

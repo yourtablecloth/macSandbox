@@ -15,12 +15,12 @@ import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
 
-/// 라우터 — 베이스라인이 없으면(또는 재구축 진입 시) 빌드 화면, 있으면 곧바로 샌드박스를 시작한다.
-/// 실행 중에는 인앱 임베드 RDP 뷰가 창을 채운다(단일 창).
+/// Router — shows the build screen when there is no baseline (or when entering rebuild), and starts the sandbox immediately when there is one.
+/// While running, the in-app embedded RDP view fills the window (single window).
 struct ContentView: View {
-    @ObservedObject var runner: SandboxRunner   // 앱(App) 소유 — 메뉴 커맨드와 공유
-    @ObservedObject var admin: BaselineAdmin    // 앱(App) 소유 — 재구축/파기 메뉴와 공유
-    @ObservedObject private var openWSB = OpenWSB.shared   // .wsb 파일 열기(연결/버튼) 통지
+    @ObservedObject var runner: SandboxRunner   // Owned by the App — shared with menu commands
+    @ObservedObject var admin: BaselineAdmin    // Owned by the App — shared with the rebuild/destroy menus
+    @ObservedObject private var openWSB = OpenWSB.shared   // Open-.wsb-file (association/button) notifications
     @StateObject private var builder = BaselineBuilder()
     @State private var baselineReady = false
     @State private var config: SandboxConfig = AppLaunch.shared.effectiveConfig()
@@ -32,10 +32,10 @@ struct ContentView: View {
     var body: some View {
         Group {
             if showConsent {
-                // 약관 동의 게이트 — 창 전체를 덮는 일반 뷰(모달 시트가 아님: 시트는
-                // interactiveDismissDisabled와 함께 앱 종료를 막아 ⌘Q/종료가 안 되는 버그를 유발).
+                // Terms consent gate — a regular view that covers the whole window (not a modal sheet:
+                // a sheet together with interactiveDismissDisabled blocks app termination, causing a bug where ⌘Q/quit does not work).
                 TermsConsentView {
-                    ConsentStore.recordAgreement()   // 동의 버전·시점 기록(UserDefaults + 감사 로그)
+                    ConsentStore.recordAgreement()   // Record the consent version and timestamp (UserDefaults + audit log)
                     showConsent = false
                     proceedAfterConsent()
                 }
@@ -47,7 +47,7 @@ struct ContentView: View {
         }
         .frame(minWidth: 680, minHeight: 600)
         .background(WindowAccessor { window in
-            // 창 닫기 시 확인 다이얼로그(VM과 함께 종료)
+            // Confirmation dialog when the window is closed (terminates together with the VM)
             window?.delegate = closeGuard
         })
         .alert(L("wsb.error.title"), isPresented: Binding(
@@ -58,14 +58,14 @@ struct ContentView: View {
             Text(wsbError ?? "")
         }
         .onAppear {
-            AppHooks.shared.runner = runner   // 앱/창 종료 훅이 참조
-            // 약관 동의 전엔 어떤 동작(샌드박스 자동 시작 등)도 하지 않는다.
+            AppHooks.shared.runner = runner   // Referenced by the app/window termination hooks
+            // Do nothing (e.g. auto-starting the sandbox) before the terms are accepted.
             guard !ConsentStore.needsConsent else { showConsent = true; return }
             proceedAfterConsent()
         }
         .onChange(of: builder.phase) { _, p in
             if p == .completed {
-                // 재구축 포함 — 빌드가 끝나면 곧바로 새 샌드박스로 진입한다.
+                // Including rebuilds — once the build finishes, enter a new sandbox immediately.
                 admin.leaveRebuildMode()
                 didAutoStart = false
                 refresh()
@@ -76,13 +76,13 @@ struct ContentView: View {
             refresh()
         }
         .onChange(of: runner.isRunning) { _, running in
-            // 임베드 RDP 뷰는 앱 창 안에서 렌더하므로 창을 내리지 않는다. 종료 시에만 갱신.
+            // The embedded RDP view renders inside the app window, so the window is not dismissed. Refresh only on termination.
             if !running { refresh() }
         }
         .onChange(of: openWSB.token) { _, _ in handleOpenWSB() }
         .onReceive(NotificationCenter.default.publisher(for: .msbxConsentChanged)) { _ in
-            // 동의 철회 시: 실행 중 샌드박스 종료 + 베이스 이미지 삭제 + 게이트 재표시
-            // (재동의 시 베이스 이미지가 없으므로 빌드 화면으로 진입). 재동의(record)면 게이트만 내린다.
+            // On consent withdrawal: terminate the running sandbox + delete the base image + re-show the gate
+            // (since there is no base image on re-consent, it enters the build screen). On re-consent (record), only the gate is dismissed.
             if ConsentStore.needsConsent {
                 didAutoStart = false
                 admin.destroyForConsentWithdrawal(runner: runner)
@@ -93,16 +93,16 @@ struct ContentView: View {
         }
     }
 
-    /// 약관 동의 후(또는 이미 동의된 상태) 정상 흐름 진입 — 자동 시작 + 런치 시 `.wsb` 오류 표시.
+    /// Enter the normal flow after terms acceptance (or when already accepted) — auto-start + show `.wsb` errors at launch.
     private func proceedAfterConsent() {
         refresh()
         if let err = openWSB.errorMessage { wsbError = err }
     }
 
-    /// 베이스라인이 준비돼 있으면 곧바로 샌드박스를 시작한다(최초 1회). 없으면 빌드 화면.
-    /// 시작 구성은 effectiveConfig() — `.wsb`/CLI 명시 구성이 있으면 그것, 없으면 옵션 기본값.
+    /// If the baseline is ready, start the sandbox immediately (once, the first time). Otherwise the build screen.
+    /// The startup configuration is effectiveConfig() — the explicit `.wsb`/CLI configuration if present, otherwise the options defaults.
     private func refresh() {
-        guard !ConsentStore.needsConsent else { return }   // 동의 전엔 자동 시작 금지
+        guard !ConsentStore.needsConsent else { return }   // No auto-start before consent
         baselineReady = runner.hasBaseline()
         if !runner.isRunning {
             config = AppLaunch.shared.effectiveConfig()
@@ -113,11 +113,11 @@ struct ContentView: View {
         }
     }
 
-    /// 실행 중(런타임)에 `.wsb`를 열었을 때: 파싱 실패면 오류, 성공이면 곧바로 새 샌드박스 시작
-    /// (미실행 시). 베이스라인이 없거나 재구축 중이면 구성만 반영해 빌드 완료 후 자동 시작한다.
-    /// 이미 실행 중이면 현재 세션을 지키고 구성만 갱신(다음 시작에 반영).
+    /// When a `.wsb` is opened while running (at runtime): an error on parse failure, or on success start a new sandbox immediately
+    /// (when not running). If there is no baseline or a rebuild is in progress, only the configuration is applied and it auto-starts after the build completes.
+    /// If already running, the current session is preserved and only the configuration is updated (applied on the next start).
     private func handleOpenWSB() {
-        guard !ConsentStore.needsConsent else { return }   // 동의 후 proceedAfterConsent가 처리
+        guard !ConsentStore.needsConsent else { return }   // After consent, proceedAfterConsent handles it
         if let err = openWSB.errorMessage { wsbError = err; return }
         guard let cfg = openWSB.pendingConfig else { return }
         config = cfg
@@ -127,8 +127,8 @@ struct ContentView: View {
     }
 }
 
-/// SwiftUI 뷰가 올라간 NSWindow 참조를 캡처한다(창을 화면에서 내리거나 다시 띄우기 위함).
-/// 코디네이터로 창이 실제로 바뀔 때만 콜백해 재렌더 루프를 막는다.
+/// Captures a reference to the NSWindow that hosts the SwiftUI view (in order to dismiss or re-present the window).
+/// The coordinator calls back only when the window actually changes, preventing a re-render loop.
 struct WindowAccessor: NSViewRepresentable {
     let onWindow: (NSWindow?) -> Void
     func makeCoordinator() -> Coordinator { Coordinator() }
@@ -150,16 +150,16 @@ struct WindowAccessor: NSViewRepresentable {
     }
 }
 
-/// 베이스라인 자동 빌드 화면 (베이스라인이 없거나 재구축에 진입했을 때 표시)
+/// Automatic baseline build screen (shown when there is no baseline or when entering a rebuild)
 ///
-/// 두 가지 모드로 화면을 단순하게 유지한다:
-/// - **설정 모드**(빌드 전): ISO·에디션 선택 카드 + 빌드 버튼만.
-/// - **설치 모드**(빌드 중): 입력 폼을 숨기고 진행 카드 + 부팅 모니터 + 로그만.
-/// 빌드 시작 전에는 Windows 라이선스 확인 체크리스트 시트를 매번 표시한다.
+/// Two modes keep the screen simple:
+/// - **Setup mode** (before build): only the ISO/edition selection cards + the build button.
+/// - **Install mode** (during build): hides the input form and shows only the progress card + boot monitor + log.
+/// Before starting a build, the Windows license confirmation checklist sheet is shown every time.
 struct BuildView: View {
     @ObservedObject var builder: BaselineBuilder
     @ObservedObject var admin: BaselineAdmin
-    /// true면 준비된 베이스라인이 있는 재구축 모드 — 샌드박스로 돌아가기 버튼 표시.
+    /// If true, this is rebuild mode with a ready baseline — shows the return-to-sandbox button.
     var canReturnToSandbox = false
 
     @State private var isoPath: String = ""
@@ -197,7 +197,7 @@ struct BuildView: View {
             }
             .padding(26)
             .frame(maxWidth: 720)
-            .frame(maxWidth: .infinity)   // 중앙 정렬 컬럼
+            .frame(maxWidth: .infinity)   // Center-aligned column
         }
         .sheet(isPresented: $showLicenseChecklist) {
             LicenseChecklistView {
@@ -218,7 +218,7 @@ struct BuildView: View {
         }
     }
 
-    // MARK: - 공통 헤더
+    // MARK: - Common header
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -236,9 +236,9 @@ struct BuildView: View {
         }
     }
 
-    // MARK: - 설정 모드
+    // MARK: - Setup mode
 
-    /// 기존 베이스라인 요약 — 작은 캡슐 한 줄로(재구축 진입 시 현황 확인용).
+    /// Summary of the existing baseline — in a single small capsule line (to check the status when entering a rebuild).
     private func baselineCapsule(_ meta: BaselineMetadata) -> some View {
         HStack(spacing: 8) {
             Image(systemName: meta.status == .ready ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
@@ -254,10 +254,10 @@ struct BuildView: View {
         .help(meta.diskPath)
     }
 
-    /// ISO + 에디션을 한 카드로 묶은 설정 폼.
+    /// Setup form bundling ISO + edition into a single card.
     private var setupCard: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // ISO 선택 행
+            // ISO selection row
             HStack(alignment: .center, spacing: 12) {
                 Image(systemName: "opticaldisc")
                     .font(.title2).foregroundStyle(.secondary).frame(width: 28)
@@ -282,7 +282,7 @@ struct BuildView: View {
 
             Divider().padding(.horizontal, 14)
 
-            // 에디션 행
+            // Edition row
             HStack(alignment: .center, spacing: 12) {
                 Image(systemName: "square.stack.3d.up")
                     .font(.title2).foregroundStyle(.secondary).frame(width: 28)
@@ -305,7 +305,7 @@ struct BuildView: View {
 
             Divider().padding(.horizontal, 14)
 
-            // 기본 사양 안내
+            // Default specs notice
             Label(L("build.edition.defaults"), systemImage: "info.circle")
                 .font(.caption).foregroundStyle(.secondary)
                 .padding(.horizontal, 14).padding(.vertical, 10)
@@ -324,7 +324,7 @@ struct BuildView: View {
 
     private var buildButton: some View {
         Button {
-            showLicenseChecklist = true   // 매 빌드마다 라이선스 확인
+            showLicenseChecklist = true   // License confirmation on every build
         } label: {
             Label(L("build.action.build"), systemImage: "hammer")
                 .frame(maxWidth: .infinity)
@@ -334,7 +334,7 @@ struct BuildView: View {
         .disabled(!canBuild)
     }
 
-    // MARK: - 설치 모드
+    // MARK: - Install mode
 
     private var progressCard: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -364,7 +364,7 @@ struct BuildView: View {
         }
     }
 
-    // MARK: - 액션
+    // MARK: - Actions
 
     private func loadEditions() {
         guard !isoPath.isEmpty, FileManager.default.fileExists(atPath: isoPath) else {

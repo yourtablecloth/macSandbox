@@ -13,12 +13,12 @@
 
 import SwiftUI
 
-/// 약관 등 정적 문서를 위한 가벼운 마크다운 렌더러(의존성 없음).
+/// Lightweight Markdown renderer (no dependencies) for static documents such as the terms.
 ///
-/// 블록 단위로 파싱한다: `#`/`##`/`###` 헤딩, `-`/`*` 글머리 목록, `1.` 번호 목록,
-/// `>` 인용, `---` 구분선, 빈 줄(문단 구분), 그 외 문단. 인라인(굵게/기울임/링크/코드)은
-/// `AttributedString(markdown:)`(inline-only)로 처리한다. 표·이미지·코드펜스 등 복잡한
-/// 요소는 지원하지 않는다(약관 수준엔 충분).
+/// Parses block by block: `#`/`##`/`###` headings, `-`/`*` bullet lists, `1.` numbered lists,
+/// `>` quotes, `---` dividers, blank lines (paragraph separators), and other paragraphs. Inline (bold/italic/link/code) is
+/// handled by `AttributedString(markdown:)` (inline-only). Complex elements such as tables/images/code fences
+/// are not supported (sufficient for the terms level).
 struct MarkdownView: View {
     let markdown: String
 
@@ -32,7 +32,7 @@ struct MarkdownView: View {
         .textSelection(.enabled)
     }
 
-    // MARK: - 블록 파싱
+    // MARK: - Block parsing
 
     private struct Block: Identifiable {
         let id = UUID()
@@ -41,9 +41,9 @@ struct MarkdownView: View {
 
     private func blocks() -> [Block] {
         var result: [Block] = []
-        var paragraph: [String] = []   // 빈 줄 전까지 연속된 본문 줄을 한 문단으로 합친다
+        var paragraph: [String] = []   // Merges consecutive body lines, up to a blank line, into a single paragraph
 
-        // 본문 줄 누적분을 하나의 문단으로 방출(인라인 굵게/이탤릭이 줄에 걸쳐도 매칭되도록).
+        // Emit the accumulated body lines as a single paragraph (so inline bold/italic matches even across lines).
         func flushParagraph() {
             guard !paragraph.isEmpty else { return }
             let text = paragraph.joined(separator: " ")
@@ -53,7 +53,7 @@ struct MarkdownView: View {
 
         for rawLine in markdown.components(separatedBy: "\n") {
             let line = rawLine.trimmingCharacters(in: .whitespaces)
-            if line.isEmpty { flushParagraph(); continue }   // 문단 경계
+            if line.isEmpty { flushParagraph(); continue }   // Paragraph boundary
 
             if line == "---" || line == "***" || line == "___" {
                 flushParagraph()
@@ -71,7 +71,7 @@ struct MarkdownView: View {
                 flushParagraph()
                 result.append(Block(view: AnyView(quoteView(quote))))
             } else {
-                paragraph.append(line)   // 본문 — 누적(빈 줄/다른 블록을 만나면 합쳐 방출)
+                paragraph.append(line)   // Body — accumulate (emit merged when a blank line/another block is reached)
             }
         }
         flushParagraph()
@@ -79,7 +79,7 @@ struct MarkdownView: View {
     }
 
     private func heading(_ line: String) -> (Int, String)? {
-        for level in [3, 2, 1] {   // ### 먼저 검사(더 긴 접두어 우선)
+        for level in [3, 2, 1] {   // Check ### first (longer prefix takes priority)
             let prefix = String(repeating: "#", count: level) + " "
             if line.hasPrefix(prefix) { return (level, String(line.dropFirst(prefix.count))) }
         }
@@ -103,7 +103,7 @@ struct MarkdownView: View {
         line.hasPrefix("> ") ? String(line.dropFirst(2)) : (line == ">" ? "" : nil)
     }
 
-    // MARK: - 블록 렌더
+    // MARK: - Block rendering
 
     private func headingView(level: Int, text: String) -> some View {
         let font: Font = level == 1 ? .title2.bold()
@@ -134,7 +134,7 @@ struct MarkdownView: View {
         Text(inline(text)).fixedSize(horizontal: false, vertical: true)
     }
 
-    /// 인라인 마크다운(굵게/기울임/링크/코드)만 해석. 블록 마커는 호출 전 제거됨.
+    /// Interprets only inline Markdown (bold/italic/link/code). Block markers are removed before the call.
     private func inline(_ s: String) -> AttributedString {
         (try? AttributedString(
             markdown: s,

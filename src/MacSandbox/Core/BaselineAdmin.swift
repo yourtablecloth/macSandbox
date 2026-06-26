@@ -13,24 +13,24 @@
 
 import AppKit
 
-/// 베이스라인 관리(재구축/파기) 오케스트레이터.
+/// Baseline management (rebuild/destroy) orchestrator.
 ///
-/// - 재구축: 확인 → (실행 중이면) 샌드박스 정지 대기 → 빌드 화면으로 전환(`rebuildMode`).
-///   실제 교체는 BaselineBuilder.build가 수행한다(기존 베이스라인 디렉토리 삭제 후 새로 설치).
-/// - 파기: 확인 → 정지 대기 → 베이스라인 디렉토리 삭제 → 라우터가 자연히 빌드 화면을 띄운다.
+/// - Rebuild: confirm → (if running) wait for the sandbox to stop → switch to the build screen (`rebuildMode`).
+///   The actual replacement is performed by BaselineBuilder.build (delete the existing baseline directory, then install anew).
+/// - Destroy: confirm → wait for stop → delete the baseline directory → the router naturally shows the build screen.
 @MainActor
 final class BaselineAdmin: ObservableObject {
 
-    /// true면 베이스라인이 준비돼 있어도 빌드 화면을 보여준다(재구축 진입).
+    /// If true, show the build screen even when a baseline is ready (entering rebuild).
     @Published var rebuildMode = false
-    /// 정지 대기/삭제 진행 중 — 메뉴 중복 실행 방지.
+    /// Stop-wait/delete in progress — prevents duplicate menu invocations.
     @Published private(set) var busy = false
 
     func hasBaseline() -> Bool {
         FileManager.default.fileExists(atPath: SandboxPaths.baselineMetadataPath.path)
     }
 
-    /// 메뉴/버튼: 베이스라인 재구축. 확인 후 샌드박스를 정지하고 빌드 화면으로 전환한다.
+    /// Menu/button: rebuild the baseline. After confirmation, stop the sandbox and switch to the build screen.
     func requestRebuild(runner: SandboxRunner) {
         guard !busy, !rebuildMode else { return }
         guard confirm(title: L("admin.rebuild.title"),
@@ -44,7 +44,7 @@ final class BaselineAdmin: ObservableObject {
         }
     }
 
-    /// 메뉴/버튼: 베이스 이미지 파기. 확인 후 샌드박스를 정지하고 베이스라인 디렉토리를 삭제한다.
+    /// Menu/button: destroy the base image. After confirmation, stop the sandbox and delete the baseline directory.
     func requestDestroy(runner: SandboxRunner) {
         guard !busy else { return }
         guard confirm(title: L("admin.destroy.title"),
@@ -58,8 +58,8 @@ final class BaselineAdmin: ObservableObject {
         }
     }
 
-    /// 약관 동의 철회: **확인 없이 즉시** 샌드박스를 정지하고 베이스 이미지를 삭제한다.
-    /// (철회 확인 단계에서 이미 이 파괴적 결과를 경고하므로 추가 확인을 받지 않는다.)
+    /// Terms consent withdrawal: **immediately, without confirmation**, stops the sandbox and deletes the base image.
+    /// (The withdrawal confirmation step already warns about this destructive outcome, so no additional confirmation is taken.)
     func destroyForConsentWithdrawal(runner: SandboxRunner) {
         guard !busy else { return }
         busy = true
@@ -69,14 +69,14 @@ final class BaselineAdmin: ObservableObject {
         }
     }
 
-    /// 정지 대기 + 베이스 이미지 삭제(공통). 호출자가 사용자 확인을 책임진다.
+    /// Stop-wait + base image deletion (shared). The caller is responsible for user confirmation.
     private func performDestroy(runner: SandboxRunner) async {
         await stopAndWait(runner: runner)
         try? FileManager.default.removeItem(at: SandboxPaths.baselineDir)
-        rebuildMode = true   // 라우터 갱신 트리거(베이스라인이 없으니 빌드 화면)
+        rebuildMode = true   // Trigger router refresh (no baseline, so the build screen)
     }
 
-    /// 빌드 완료/뒤로 가기 — 일반 라우팅(샌드박스 자동 시작)으로 복귀.
+    /// Build complete / go back — return to normal routing (sandbox auto-start).
     func leaveRebuildMode() {
         rebuildMode = false
     }
@@ -84,7 +84,7 @@ final class BaselineAdmin: ObservableObject {
     private func stopAndWait(runner: SandboxRunner) async {
         guard runner.isRunning else { return }
         runner.stop()
-        for _ in 0..<50 {              // 최대 ~10초 (Lifecycle의 종료 대기와 동일)
+        for _ in 0..<50 {              // up to ~10s (same as Lifecycle's shutdown wait)
             if !runner.isRunning { break }
             try? await Task.sleep(nanoseconds: 200_000_000)
         }

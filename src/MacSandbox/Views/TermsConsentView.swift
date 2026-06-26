@@ -14,15 +14,15 @@
 import SwiftUI
 import AppKit
 
-/// 사용 약관 동의 시트 — 최초 실행/약관 버전 상승 시 표시. 동의 전엔 앱을 쓸 수 없다.
-/// 약관 본문은 언어 선택기로 번들된 모든 언어(en/ko/ja/de/es/fr) 전문을 볼 수 있다(처음엔 현재 앱 언어).
-/// 동의는 언어와 무관하게 동일 버전의 약관에 대한 것이다(각 언어판은 실질적으로 동등).
+/// Terms of use consent sheet — shown on first launch / when the terms version is raised. The app cannot be used before consent.
+/// The terms body can be read in full in all bundled languages (en/ko/ja/de/es/fr) via the language picker (initially the current app language).
+/// Consent applies to the same version of the terms regardless of language (each language edition is effectively equivalent).
 struct TermsConsentView: View {
-    /// 동의(체크 + 계속) 시 호출 — 호출자가 기록·게이트 해제를 수행한다.
+    /// Called on consent (check + continue) — the caller records it and dismisses the gate.
     let onAgree: () -> Void
 
     @State private var agreed = false
-    /// 읽기 언어 — 처음엔 현재 앱 언어, 사용자가 메뉴로 전환 가능(UI 문구는 앱 언어 유지).
+    /// Reading language — initially the current app language; the user can switch it via the menu (the UI wording stays in the app language).
     @State private var language: String = currentLanguageCode()
 
     private let languages = AppLanguage.allCases.filter { $0 != .auto }
@@ -53,7 +53,7 @@ struct TermsConsentView: View {
             ScrollView {
                 MarkdownView(markdown: terms)
                     .padding(.trailing, 6)
-                    .id(language)   // 언어 전환 시 스크롤을 맨 위로 리셋
+                    .id(language)   // Reset scroll to the top when the language changes
             }
             .frame(maxHeight: .infinity)
             .padding(12)
@@ -74,7 +74,7 @@ struct TermsConsentView: View {
             }
         }
         .padding(24)
-        .frame(maxWidth: 760)                          // 카드 폭 상한
-        .frame(maxWidth: .infinity, maxHeight: .infinity)  // 창 전체를 채우고 중앙 정렬
+        .frame(maxWidth: 760)                          // Card width cap
+        .frame(maxWidth: .infinity, maxHeight: .infinity)  // Fill the whole window and center
     }
 }

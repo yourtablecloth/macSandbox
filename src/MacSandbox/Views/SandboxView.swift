@@ -15,11 +15,11 @@ import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
 
-/// 샌드박스 실행 화면. 베이스라인이 준비되면 라우터가 곧바로 시작한다.
+/// Sandbox run screen. Once the baseline is ready, the router starts it immediately.
 ///
-/// - 실행 중: **인앱 임베드 RDP 뷰**가 창을 채운다(외부 FreeRDP 창 없음). 첫 프레임 전엔
-///   부팅 오버레이(상태/경과 시간/콘솔/로그)를 보여주고, RDP 화면이 그려지면 오버레이를 내린다.
-/// - 종료 후: 다시 시작 / `.wsb` 불러오기 / 베이스라인 재구축·파기.
+/// - While running: the **in-app embedded RDP view** fills the window (no external FreeRDP window). Before the first frame,
+///   it shows the boot overlay (status/elapsed time/console/log), and dismisses the overlay once the RDP screen is drawn.
+/// - After termination: restart / load `.wsb` / rebuild or destroy the baseline.
 struct SandboxView: View {
     @ObservedObject var runner: SandboxRunner
     @ObservedObject var admin: BaselineAdmin
@@ -53,11 +53,11 @@ struct SandboxView: View {
         return false
     }
 
-    // MARK: - 실행 중 (임베드 RDP 뷰)
+    // MARK: - Running (embedded RDP view)
 
     private var runningView: some View {
         ZStack {
-            // 타이틀바 아래 콘텐츠 영역을 채운다(ignoresSafeArea로 타이틀바까지 확장하면 상단이 가려짐).
+            // Fills the content area below the title bar (extending into the title bar with ignoresSafeArea would obscure the top).
             Color.black
             if runner.rdpPort > 0 {
                 RDPHostView(host: "127.0.0.1", port: runner.rdpPort,
@@ -68,11 +68,11 @@ struct SandboxView: View {
                             rendered: $rdpRendered)
             }
             if !rdpRendered { bootOverlay }
-            // 종료는 메뉴(샌드박스 › 샌드박스 종료 ⌘.) · 창 닫기 · ⌘Q로 제어한다(플로팅 버튼 제거).
+            // Termination is controlled by the menu (Sandbox › Stop Sandbox ⌘.) · closing the window · ⌘Q (floating button removed).
         }
     }
 
-    /// 부팅 오버레이 — 첫 RDP 프레임이 그려질 때까지 표시.
+    /// Boot overlay — shown until the first RDP frame is drawn.
     private var bootOverlay: some View {
         ZStack {
             Rectangle().fill(.ultraThinMaterial).ignoresSafeArea()
@@ -100,7 +100,7 @@ struct SandboxView: View {
         }
     }
 
-    /// 콘솔(부팅 모니터) + 로그
+    /// Console (boot monitor) + log
     private var detailPane: some View {
         VStack(spacing: 10) {
             if let console = runner.console {
@@ -112,7 +112,7 @@ struct SandboxView: View {
         }
     }
 
-    // MARK: - 시작 직전
+    // MARK: - Just before start
 
     private var startingView: some View {
         VStack(spacing: 14) {
@@ -123,7 +123,7 @@ struct SandboxView: View {
         }
     }
 
-    // MARK: - 종료 후
+    // MARK: - After termination
 
     private var endedView: some View {
         VStack(spacing: 16) {
@@ -145,7 +145,7 @@ struct SandboxView: View {
                 .controlSize(.large)
             }
 
-            // 베이스라인 관리 — 재구축(설치 다시 실행) / 파기(베이스 이미지 삭제)
+            // Baseline management — rebuild (re-run the install) / destroy (delete the base image)
             HStack(spacing: 10) {
                 Button { admin.requestRebuild(runner: runner) } label: {
                     Label(L("ended.rebuild"), systemImage: "arrow.triangle.2.circlepath")
@@ -166,7 +166,7 @@ struct SandboxView: View {
         }
     }
 
-    // MARK: - .wsb 불러오기
+    // MARK: - Loading .wsb
 
     private func loadWSB() {
         let panel = NSOpenPanel()
@@ -178,14 +178,14 @@ struct SandboxView: View {
         }
         panel.message = L("run.wsb.panel")
         if panel.runModal() == .OK, let url = panel.url {
-            // Finder 파일 연결과 동일 경로 — 파싱 성공 시 ContentView가 곧바로 새 샌드박스를
-            // 시작하고, 실패 시 오류를 표시한다.
+            // Same path as the Finder file association — on successful parse ContentView starts a new sandbox
+            // immediately, and on failure it shows an error.
             OpenWSB.shared.open([url])
         }
     }
 }
 
-/// 부팅 경과 시간 라벨 — 1초마다 TimelineView만 갱신돼 오버레이 전체 재렌더를 피한다.
+/// Boot elapsed-time label — only the TimelineView updates every second, avoiding a re-render of the whole overlay.
 private struct BootElapsedLabel: View {
     let startedAt: Date
 

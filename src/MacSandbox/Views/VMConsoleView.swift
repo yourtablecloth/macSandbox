@@ -13,9 +13,9 @@
 
 import SwiftUI
 
-/// SwiftUI KeyPress → QEMU qcode 매핑
+/// SwiftUI KeyPress → QEMU qcode mapping
 enum QKeyMap {
-    /// 특수 키 (KeyEquivalent.character 기준)
+    /// Special keys (based on KeyEquivalent.character)
     static let specialByChar: [Character: [String]] = [
         KeyEquivalent.return.character: ["ret"],
         KeyEquivalent.escape.character: ["esc"],
@@ -33,14 +33,14 @@ enum QKeyMap {
         KeyEquivalent.space.character: ["spc"]
     ]
 
-    /// 기호 → qcode 직접 매핑
+    /// Symbol → qcode direct mapping
     static let directSymbol: [Character: String] = [
         "-": "minus", "=": "equal", "[": "bracket_left", "]": "bracket_right",
         "\\": "backslash", ";": "semicolon", "'": "apostrophe", "`": "grave_accent",
         ",": "comma", ".": "dot", "/": "slash"
     ]
 
-    /// shift 필요한 기호 → 기준 qcode
+    /// Symbols requiring shift → base qcode
     static let shiftSymbol: [Character: String] = [
         "!": "1", "@": "2", "#": "3", "$": "4", "%": "5", "^": "6", "&": "7",
         "*": "8", "(": "9", ")": "0", "_": "minus", "+": "equal",
@@ -69,7 +69,7 @@ enum QKeyMap {
     }
 }
 
-/// 실행 중인 VM 화면을 표시하고 키보드/마우스 입력으로 개입할 수 있는 인터랙티브 콘솔.
+/// An interactive console that displays the running VM screen and allows intervention via keyboard/mouse input.
 struct VMConsoleView: View {
     @ObservedObject var console: VMConsole
     @FocusState private var focused: Bool

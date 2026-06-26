@@ -13,17 +13,17 @@
 
 import Foundation
 
-/// UI용 스로틀링 로그 스토어.
+/// Throttling log store for the UI.
 ///
-/// QEMU 출력은 부팅 중 줄 단위로 빠르게 쏟아지는데, 한 줄마다 `@Published`를 갱신하면
-/// 이를 관찰하는 뷰 트리 전체가 매번 재렌더되어 부팅 오버레이가 버벅인다.
-/// 추가분을 모아 최대 4Hz로만 게시하고, 표시 길이도 상한을 둬 Text 렌더 비용을 묶는다.
+/// QEMU output pours out line by line rapidly during boot, and updating `@Published` per line causes the entire
+/// view tree observing it to re-render every time, making the boot overlay stutter.
+/// It batches additions and publishes at most at 4Hz, and also caps the display length to bound the Text render cost.
 @MainActor
 final class LogBuffer: ObservableObject {
 
     @Published private(set) var text: String = ""
 
-    /// 표시 상한(문자 수). 초과 시 앞부분을 잘라 최근 로그만 유지한다(전체 로그는 별도 보관 안 함).
+    /// Display cap (character count). When exceeded, the front is trimmed to keep only recent logs (the full log is not kept separately).
     private let maxLength = 64 * 1024
     private let flushInterval: Duration = .milliseconds(250)
 
@@ -58,7 +58,7 @@ final class LogBuffer: ObservableObject {
         var merged = text + pending
         pending = ""
         if merged.count > maxLength {
-            // 줄 경계에 맞춰 앞부분을 버린다.
+            // Discard the front, aligned to a line boundary.
             let cut = merged.index(merged.endIndex, offsetBy: -maxLength)
             if let nl = merged[cut...].firstIndex(of: "\n") {
                 merged = String(merged[merged.index(after: nl)...])

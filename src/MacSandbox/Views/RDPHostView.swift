@@ -14,21 +14,21 @@
 import SwiftUI
 import CFreeRDP
 
-/// libfreerdp 임베드 RDP 뷰를 SwiftUI에 올리는 래퍼.
-/// 별도 FreeRDP 창 없이 인앱에서 RDP 화면을 렌더한다(렌더+입력+클립보드/파일).
+/// Wrapper that hosts the libfreerdp embedded RDP view in SwiftUI.
+/// Renders the RDP screen in-app without a separate FreeRDP window (render + input + clipboard/files).
 struct RDPHostView: NSViewRepresentable {
     let host: String
     let port: Int
     var username: String = SandboxCreds.username
     var password: String = SandboxCreds.password
-    /// 리다이렉션 기능(.wsb 반영). 스피커 재생은 항상 켜짐(.wsb 토글 없음).
+    /// Redirection features (reflecting .wsb). Speaker playback is always on (no .wsb toggle).
     var clipboardEnabled: Bool = true
     var micEnabled: Bool = true
     var printerEnabled: Bool = false
-    /// 공유 폴더(.wsb MappedFolders) 해석 결과. 드라이브명은 SandboxConfig.resolvedMounts()에서
-    /// 산출돼 로그온 마운트(\\tsclient\<드라이브명>)와 일치한다.
+    /// Resolved result of shared folders (.wsb MappedFolders). The drive name is derived from
+    /// SandboxConfig.resolvedMounts() and matches the logon mount (\\tsclient\<driveName>).
     var mounts: [ResolvedMount] = []
-    /// 첫 RDP 프레임이 렌더되면 true (부팅 오버레이 → RDP 화면 전환용).
+    /// True once the first RDP frame is rendered (for the boot overlay → RDP screen transition).
     @Binding var rendered: Bool
 
     func makeCoordinator() -> Coordinator { Coordinator(rendered: $rendered) }
@@ -37,17 +37,17 @@ struct RDPHostView: NSViewRepresentable {
         let v = RDPView(frame: .zero)
         let coord = context.coordinator
         v.onFirstFrame = { coord.markRendered() }
-        v.clipboardEnabled = clipboardEnabled   // connect 전에 설정(엔진 생성 시 반영)
+        v.clipboardEnabled = clipboardEnabled   // Set before connect (applied when the engine is created)
         v.micEnabled = micEnabled
         v.printerEnabled = printerEnabled
-        // 옵션 대화상자 설정(다음 연결부터 반영): 오디오 재생 / HiDPI / 키보드 식별(한·영 등)
+        // Options-dialog settings (applied from the next connection): audio playback / HiDPI / keyboard identification (Korean/English, etc.)
         v.audioPlaybackEnabled = AppOptions.audioPlayback
         v.hiDPIEnabled = AppOptions.hiDPI
         let kb = AppOptions.keyboardLayout.rdpValues
         if kb.type > 0 || kb.layout > 0 {
             v.setKeyboardType(kb.type, subtype: kb.subtype, layout: kb.layout)
         }
-        for m in mounts {                        // rdpdr 드라이브명 = resolvedMounts의 driveName
+        for m in mounts {                        // rdpdr drive name = resolvedMounts' driveName
             v.addMappedFolder(m.hostPath, name: m.driveName, readOnly: m.readOnly)
         }
         v.connect(toHost: host, port: Int32(port), username: username, password: password)
@@ -69,7 +69,7 @@ struct RDPHostView: NSViewRepresentable {
     }
 }
 
-/// `--freerdp-view <host:port>` 격리 테스트 앱.
+/// `--freerdp-view <host:port>` isolated test app.
 struct RDPViewTestApp: App {
     var body: some Scene {
         WindowGroup("RDP View Test") {

@@ -13,9 +13,9 @@
 
 import SwiftUI
 
-/// '옵션' 대화상자 (메뉴: macSandbox for Windows › Settings…, ⌘,).
-/// UserDefaults(@AppStorage) 영속 — AppOptions와 키를 공유한다.
-/// 샌드박스 기본 구성은 **다음 샌드박스 시작**, 입력/출력은 **다음 RDP 연결**부터 적용.
+/// 'Options' dialog (menu: macSandbox for Windows › Settings…, ⌘,).
+/// Persisted in UserDefaults (@AppStorage) — shares keys with AppOptions.
+/// The default sandbox configuration applies from the **next sandbox start**, and input/output from the **next RDP connection**.
 struct OptionsView: View {
     var body: some View {
         TabView {
@@ -31,7 +31,7 @@ struct OptionsView: View {
     }
 }
 
-/// 일반 — 앱 표시 언어 + 사용 약관 동의(상태 표시 / 약관 보기 / 철회).
+/// General — app display language + terms of use consent (status display / view terms / withdraw).
 private struct GeneralOptionsTab: View {
     @AppStorage(AppOptions.kLanguage) private var language = AppLanguage.auto.rawValue
     @Environment(\.openWindow) private var openWindow
@@ -68,9 +68,9 @@ private struct GeneralOptionsTab: View {
         .alert(L("options.terms.withdraw.title"), isPresented: $confirmWithdraw) {
             Button(L("common.cancel"), role: .cancel) { }
             Button(L("options.terms.withdraw.confirm"), role: .destructive) {
-                ConsentStore.withdraw()   // 통지 → ContentView가 세션 종료 + 베이스 이미지 삭제 + 게이트 표시
+                ConsentStore.withdraw()   // Notify → ContentView terminates the session + deletes the base image + shows the gate
                 refreshConsent()
-                dismiss()                 // 옵션 창을 닫아 메인 창의 동의 게이트가 보이게 한다
+                dismiss()                 // Close the options window so the main window's consent gate becomes visible
             }
         } message: {
             Text(L("options.terms.withdraw.message"))
@@ -89,7 +89,7 @@ private struct GeneralOptionsTab: View {
     }
 }
 
-/// 기본 샌드박스 구성 — `.wsb`/CLI 미지정 시 새 샌드박스에 적용되는 기본값.
+/// Default sandbox configuration — the defaults applied to a new sandbox when `.wsb`/CLI is not specified.
 private struct SandboxOptionsTab: View {
     @AppStorage(AppOptions.kMemoryMB) private var memoryMB = SandboxConfig.defaultMemoryMB
     @AppStorage(AppOptions.kCpuCores) private var cpuCores = SandboxConfig.defaultCPUCores
@@ -136,7 +136,7 @@ private struct SandboxOptionsTab: View {
     }
 }
 
-/// 입력/출력 — 키보드 식별(한/영 전환), 오디오 재생, HiDPI.
+/// Input/Output — keyboard identification (한/영 toggle), audio playback, HiDPI.
 private struct InputOutputOptionsTab: View {
     @AppStorage(AppOptions.kKeyboardLayout) private var keyboardLayout =
         KeyboardLayoutOption.auto.rawValue

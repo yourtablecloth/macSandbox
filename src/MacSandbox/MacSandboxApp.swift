@@ -15,16 +15,16 @@ import SwiftUI
 import AppKit
 import CFreeRDP
 
-/// 진입점.
-/// - GUI(기본): 베이스라인이 없으면 빌드 화면, 있으면 샌드박스 시작 화면.
-/// - 헤드리스 빌드: `MacSandbox --headless-build [ISO경로]` → GUI 없이 1-round 빌드 후 종료.
-/// - 샌드박스 실행 옵션(세부 설정): `.wsb` 파일 또는 커맨드라인 스위치로 지정. 베이스라인이
-///   준비돼 있으면 GUI는 **곧바로 샌드박스를 시작**한다(시작 버튼 없음).
-///   - `MacSandbox <config.wsb>` 또는 `MacSandbox --wsb <config.wsb>` → 구성대로 시작
-///   - 스위치: `--memory <MB>` `--cpus <N>` `--networking on|off` `--vgpu on|off`
+/// Entry point.
+/// - GUI (default): the build screen if there is no baseline, otherwise the sandbox start screen.
+/// - Headless build: `MacSandbox --headless-build [ISO path]` → a 1-round build without a GUI, then exit.
+/// - Sandbox run options (detailed settings): specified via a `.wsb` file or command-line switches. If the baseline is
+///   ready, the GUI **starts the sandbox immediately** (no start button).
+///   - `MacSandbox <config.wsb>` or `MacSandbox --wsb <config.wsb>` → start as configured
+///   - Switches: `--memory <MB>` `--cpus <N>` `--networking on|off` `--vgpu on|off`
 ///            `--clipboard on|off` `--audio on|off` `--printer on|off`
-///            `--folder <경로>[:ro]`(반복 가능) `--logon "<명령>"` (`--run`은 호환용 no-op)
-///   - 스위치/`.wsb` 미지정 시 Windows Sandbox 표준 기본값으로 시작.
+///            `--folder <path>[:ro]` (repeatable) `--logon "<command>"` (`--run` is a compatibility no-op)
+///   - When no switches/`.wsb` are specified, start with the Windows Sandbox standard defaults.
 @main
 enum AppEntry {
     static func main() {
@@ -42,7 +42,7 @@ enum AppEntry {
             let parts = args[idx + 1].split(separator: ":")
             RDPViewTest.host = String(parts[0])
             RDPViewTest.port = parts.count > 1 ? Int(parts[1]) ?? 3389 : 3389
-            // 기능 게이팅 검증용 env(미지정 시 기본값): MSBX_CLIPBOARD/MSBX_MIC/MSBX_PRINTER = 0|1
+            // env for verifying feature gating (defaults if unset): MSBX_CLIPBOARD/MSBX_MIC/MSBX_PRINTER = 0|1
             let env = ProcessInfo.processInfo.environment
             if let v = env["MSBX_CLIPBOARD"] { RDPViewTest.clipboard = (v != "0") }
             if let v = env["MSBX_MIC"] { RDPViewTest.mic = (v != "0") }
@@ -99,7 +99,7 @@ enum AppEntry {
         }
         if let idx = args.firstIndex(of: "--headless-build") {
             let isoArg = (idx + 1 < args.count && !args[idx + 1].hasPrefix("-")) ? args[idx + 1] : nil
-            HeadlessRunner.run(isoPathArg: isoArg)   // 내부에서 exit()
+            HeadlessRunner.run(isoPathArg: isoArg)   // exit() internally
         } else {
             AppLaunch.shared.configure(from: args)
             MacSandboxGUIApp.main()
@@ -108,29 +108,29 @@ enum AppEntry {
 }
 
 struct MacSandboxGUIApp: App {
-    // 메뉴바/Dock 표시 + 수명 제어(⌘Q·창 닫기 확인). 앱 델리게이트가 .regular 활성화.
+    // Menu bar/Dock display + lifecycle control (⌘Q · window-close confirmation). The app delegate activates .regular.
     @NSApplicationDelegateAdaptor(SandboxAppDelegate.self) private var appDelegate
-    // 샌드박스 러너/베이스라인 관리자는 App이 소유 — ContentView와 메뉴 커맨드가 공유한다.
+    // The sandbox runner/baseline admin are owned by the App — shared by ContentView and the menu commands.
     @StateObject private var runner = SandboxRunner()
     @StateObject private var admin = BaselineAdmin()
 
     var body: some Scene {
-        // 단일 창(Window) — WindowGroup과 달리 새 창(⌘N)이 불가해 샌드박스 창을 하나로 제약.
+        // Single window (Window) — unlike WindowGroup, a new window (⌘N) is not possible, constraining the sandbox to a single window.
         Window(Brand.appName, id: "sandbox") {
             ContentView(runner: runner, admin: admin)
         }
         .defaultSize(width: 1024, height: 720)
         .windowResizability(.contentMinSize)
         .commands {
-            CommandGroup(replacing: .newItem) { }   // "새 창" 제거(단일 창 제약)
-            CommandGroup(replacing: .appInfo) { AboutMenuItem() }   // 커스텀 '앱 정보' 창
-            CommandGroup(replacing: .help) {        // 기본 도움말 → 온라인 도움말(GitHub Pages)
+            CommandGroup(replacing: .newItem) { }   // Remove "New Window" (single-window constraint)
+            CommandGroup(replacing: .appInfo) { AboutMenuItem() }   // Custom 'About' window
+            CommandGroup(replacing: .help) {        // Default help → online help (GitHub Pages)
                 Button(L("menu.help")) {
                     if let url = URL(string: HelpLinks.help) { NSWorkspace.shared.open(url) }
                 }
                 .keyboardShortcut("?", modifiers: [.command])
                 Divider()
-                TermsMenuItem()   // 사용 약관 보기(언어 전환 가능한 읽기 전용 뷰어)
+                TermsMenuItem()   // View terms of use (a language-switchable read-only viewer)
             }
             CommandMenu(L("menu.sandbox")) {
                 Button(L("menu.stop")) { runner.stop() }
@@ -144,15 +144,15 @@ struct MacSandboxGUIApp: App {
             }
         }
 
-        // '앱 정보' 대화상자 (앱 메뉴 › macSandbox for Windows 정보)
+        // 'About' dialog (App menu › About macSandbox for Windows)
         Window(L("about.windowTitle"), id: "about") {
             AboutView()
         }
         .windowResizability(.contentSize)
         .defaultPosition(.center)
-        .commandsRemoved()   // 창 메뉴 목록에 노출하지 않음
+        .commandsRemoved()   // Not exposed in the Window menu list
 
-        // '사용 약관' 뷰어 (도움말 메뉴에서 열기 — 언어 전환 가능)
+        // 'Terms of Use' viewer (opened from the Help menu — language-switchable)
         Window(L("consent.title"), id: "terms") {
             TermsViewerView()
         }
@@ -160,14 +160,14 @@ struct MacSandboxGUIApp: App {
         .defaultPosition(.center)
         .commandsRemoved()
 
-        // '옵션' 대화상자 (앱 메뉴 › Settings…, ⌘,)
+        // 'Options' dialog (App menu › Settings…, ⌘,)
         Settings {
             OptionsView()
         }
     }
 }
 
-/// 앱 메뉴의 '… 정보' 항목 — 표준 About 패널 대신 커스텀 AboutView 창을 연다.
+/// The '… Info' item in the App menu — opens the custom AboutView window instead of the standard About panel.
 private struct AboutMenuItem: View {
     @Environment(\.openWindow) private var openWindow
     var body: some View {
@@ -175,7 +175,7 @@ private struct AboutMenuItem: View {
     }
 }
 
-/// 도움말 메뉴의 '사용 약관 보기' 항목 — 언어 전환 가능한 약관 뷰어 창을 연다.
+/// The 'View Terms of Use' item in the Help menu — opens the language-switchable terms viewer window.
 private struct TermsMenuItem: View {
     @Environment(\.openWindow) private var openWindow
     var body: some View {
@@ -183,27 +183,27 @@ private struct TermsMenuItem: View {
     }
 }
 
-/// 실행 시점에 결정된 샌드박스 구성 (CLI/`.wsb`에서 파싱, GUI가 읽음).
-/// GUI는 베이스라인이 준비돼 있으면 이 구성으로 곧바로 샌드박스를 시작한다.
+/// The sandbox configuration determined at launch time (parsed from CLI/`.wsb`, read by the GUI).
+/// If the baseline is ready, the GUI starts the sandbox immediately with this configuration.
 final class AppLaunch {
     static let shared = AppLaunch()
 
-    /// 샌드박스 구성(기본값 = 옵션 기반). CLI/`.wsb`로 덮어쓴다.
+    /// Sandbox configuration (default = options-based). Overridden by CLI/`.wsb`.
     private(set) var config = SandboxConfig()
-    /// CLI/`.wsb`(또는 실행 중 .wsb 불러오기)로 **명시 지정된** 구성. nil이면 옵션 기본값 사용.
+    /// The configuration **explicitly specified** via CLI/`.wsb` (or loading a .wsb while running). If nil, the options defaults are used.
     private(set) var explicitConfig: SandboxConfig?
-    /// 파싱 중 사용자에게 보일 메모(오류 등).
+    /// A note to show the user during parsing (errors, etc.).
     private(set) var note: String?
 
-    /// 실행 중 `.wsb`를 불러오면 명시 구성으로 전환(옵션 기본값 대신 이 구성 유지).
+    /// Loading a `.wsb` while running switches to an explicit configuration (keeps this configuration instead of the options defaults).
     func markExplicit(_ c: SandboxConfig) { explicitConfig = c }
 
-    /// 다음 샌드박스 시작에 쓸 구성. 명시 구성이 없으면 옵션에서 매번 새로 산출
-    /// (옵션 대화상자 변경이 다음 시작부터 반영).
+    /// The configuration to use for the next sandbox start. If there is no explicit configuration, it is recomputed from the options each time
+    /// (changes in the options dialog apply from the next start).
     func effectiveConfig() -> SandboxConfig { explicitConfig ?? AppOptions.makeDefaultConfig() }
 
     func configure(from args: [String]) {
-        var c = AppOptions.makeDefaultConfig()   // 미지정 항목은 옵션 기본값을 따른다
+        var c = AppOptions.makeDefaultConfig()   // Unspecified items follow the options defaults
         var explicit = false
         var notes: [String] = []
 
@@ -216,10 +216,10 @@ final class AppLaunch {
         while i < args.count {
             let a = args[i]
             let next: String? = (i + 1 < args.count) ? args[i + 1] : nil
-            func consume() { i += 1 }   // 값 1개 소비
+            func consume() { i += 1 }   // Consume one value
             switch a {
             case "--run":
-                break   // 호환용 — GUI는 항상 곧바로 시작한다
+                break   // For compatibility — the GUI always starts immediately
             case "--wsb":
                 if let p = next { loadWSB(p); consume() }
             case "--memory", "--memory-mb":
@@ -250,7 +250,7 @@ final class AppLaunch {
         self.explicitConfig = explicit ? c : nil
         self.note = notes.isEmpty ? nil : notes.joined(separator: "\n")
 
-        // CLI/.wsb로 구성이 지정됐으면 터미널에 요약 피드백 (GUI는 별도로 표시).
+        // If the configuration was specified via CLI/.wsb, print summary feedback to the terminal (the GUI shows it separately).
         if args.count > 1 {
             var out = "[MacSandbox] Sandbox configuration (starts immediately once the baseline is ready):\n"
             for (k, v) in WSBConfig.summaryLines(c) { out += "  \(k): \(v)\n" }
@@ -259,7 +259,7 @@ final class AppLaunch {
         }
     }
 
-    /// `--folder <경로>[:ro]` → MappedFolder
+    /// `--folder <path>[:ro]` → MappedFolder
     private static func parseFolder(_ spec: String) -> MappedFolder {
         var path = spec
         var readOnly = false
@@ -272,7 +272,7 @@ final class AppLaunch {
     }
 }
 
-/// 헤드리스 1-round 빌드 실행기 (CLI/검증용)
+/// Headless 1-round build runner (for CLI/verification)
 enum HeadlessRunner {
     static func run(isoPathArg: String?) {
         let isoPath = isoPathArg ?? SandboxPaths.defaultISO.path
@@ -280,7 +280,7 @@ enum HeadlessRunner {
             FileHandle.standardError.write(Data("ISO not found: \(isoPath)\n".utf8))
             exit(2)
         }
-        // GUI의 라이선스 체크리스트에 상응하는 CLI 고지(자동화 경로는 동의 절차 없이 고지만).
+        // A CLI notice corresponding to the GUI's license checklist (the automation path only notices, without a consent step).
         print("""
         [MacSandbox] NOTICE: This tool does not provide Windows, a product key, or any usage \
         rights. One Windows license covers one instance on one device (physical or virtual); \
@@ -289,8 +289,8 @@ enum HeadlessRunner {
         """)
         print("[MacSandbox] Headless baseline build started — ISO: \(isoPath)")
 
-        // 메인 액터 Task로 빌드 실행. 메인 스레드는 RunLoop로 살려두어
-        // @MainActor 작업과 QEMU 출력 콜백이 처리되게 한다. 완료 시 Task가 exit() 호출.
+        // Run the build on a main-actor Task. Keep the main thread alive with a RunLoop
+        // so @MainActor work and QEMU output callbacks are processed. On completion, the Task calls exit().
         Task { @MainActor in
             let builder = BaselineBuilder()
             builder.logHandler = { line in print("  \(line)") }

@@ -13,24 +13,24 @@
 
 import AppKit
 
-/// 앱 수명 ↔ VM 수명 동기화 훅.
+/// App lifetime ↔ VM lifetime synchronization hooks.
 ///
-/// - 창 생성 시 VM 부팅(ContentView 자동 시작).
-/// - 창 닫기/앱 종료 시도 시 **확인 다이얼로그** 후 VM 정지 + 정리 → 함께 종료.
-/// - 앱이 강제종료/크래시되면 [QEMURuntime]의 부모-사망 워치독이 VM을 파괴(orphan 방지).
+/// - Boot the VM when a window is created (ContentView auto-start).
+/// - On window close / app quit attempts, after a **confirmation dialog**, stop + clean up the VM → quit together.
+/// - If the app is force-quit/crashes, [QEMURuntime]'s parent-death watchdog destroys the VM (prevents orphans).
 final class AppHooks {
     static let shared = AppHooks()
     weak var runner: SandboxRunner?
     private init() {}
 }
 
-/// 실행 중인 샌드박스가 있으면 확인을 받고, 승인 시 정지 후 종료를 진행한다.
-/// 반환: true = 즉시 닫아도 됨(미실행), false = 닫기 보류(확인/정리 중).
+/// If there is a running sandbox, ask for confirmation, and on approval stop it then proceed to quit.
+/// Returns: true = OK to close immediately (not running), false = closing deferred (confirming/cleaning up).
 @MainActor
 private func confirmStopAndQuit() -> Bool {
     guard let runner = AppHooks.shared.runner, runner.isRunning else { return true }
-    // 약관 동의 게이트가 떠 있으면 확인 alert를 띄우지 않는다 — 게이트는 모달 시트라
-    // 그 위에 NSAlert.runModal()을 띄우면 교착되고, '닫기'는 동의 거부 의사라 확인이 불필요.
+    // If the terms consent gate is up, don't show a confirmation alert — the gate is a modal sheet,
+    // so showing NSAlert.runModal() on top of it deadlocks, and 'close' means refusing consent, so confirmation is unnecessary.
     if ConsentStore.needsConsent {
         stopThenQuit(runner) { NSApp.terminate(nil) }
         return false
@@ -39,14 +39,14 @@ private func confirmStopAndQuit() -> Bool {
     alert.messageText = L("quit.title")
     alert.informativeText = L("quit.message.close")
     alert.alertStyle = .warning
-    alert.addButton(withTitle: L("quit.confirm"))   // 기본(첫 번째)
+    alert.addButton(withTitle: L("quit.confirm"))   // default (first)
     alert.addButton(withTitle: L("common.cancel"))
     guard alert.runModal() == .alertFirstButtonReturn else { return false }
     stopThenQuit(runner) { NSApp.terminate(nil) }
     return false
 }
 
-/// 샌드박스를 정지하고 일회용 정리가 끝날 때까지(최대 ~10초) 기다린 뒤 `finish`를 호출한다.
+/// Stops the sandbox and, after waiting (up to ~10s) for the disposable cleanup to finish, calls `finish`.
 @MainActor
 private func stopThenQuit(_ runner: SandboxRunner, finish: @escaping @MainActor () -> Void) {
     runner.stop()
@@ -59,29 +59,29 @@ private func stopThenQuit(_ runner: SandboxRunner, finish: @escaping @MainActor 
     }
 }
 
-/// 메인 창의 닫기(빨간 버튼/⌘W)를 가로채 확인 다이얼로그를 띄운다.
+/// Intercepts the main window's close (red button / ⌘W) and shows a confirmation dialog.
 final class CloseGuard: NSObject, NSWindowDelegate {
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         MainActor.assumeIsolated { confirmStopAndQuit() }
     }
 }
 
-/// 일반 macOS 앱처럼 메뉴바·Dock에 표시되고(⌘Q·창 닫기로 수명 제어) 동작하게 한다.
+/// Makes it appear and behave like a normal macOS app — shown in the menu bar/Dock (lifetime controlled via ⌘Q / window close).
 final class SandboxAppDelegate: NSObject, NSApplicationDelegate {
-    // CLI(헤드리스/테스트)가 아닌 GUI로 뜰 때 정식 앱(.regular)으로 — Dock 아이콘 + 메뉴바 표시.
+    // When launching as a GUI rather than CLI (headless/test), become a regular app (.regular) — Dock icon + menu bar.
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    // Finder에서 `.wsb`를 더블클릭/드롭(파일 연결)하면 호출된다. 런치와 동시에 올 수도 있어
-    // 코디네이터에 위임만 하고(파싱/시작/오류 표시는 ContentView가 관찰해 처리), 런치 시점
-    // 호출이면 ContentView 첫 갱신이 explicitConfig로 곧바로 시작한다.
+    // Called when a `.wsb` is double-clicked/dropped (file association) in Finder. It may arrive together with launch,
+    // so this only delegates to the coordinator (parsing/start/error display are handled by ContentView observing it); if
+    // the call comes at launch time, ContentView's first update starts immediately with explicitConfig.
     func application(_ application: NSApplication, open urls: [URL]) {
         MainActor.assumeIsolated { OpenWSB.shared.open(urls) }
     }
 
-    // 단일 창을 닫으면 앱도 종료(아래 applicationShouldTerminate에서 확인 다이얼로그).
+    // Closing the single window also quits the app (confirmation dialog in applicationShouldTerminate below).
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
@@ -89,8 +89,8 @@ final class SandboxAppDelegate: NSObject, NSApplicationDelegate {
             guard let runner = AppHooks.shared.runner, runner.isRunning else {
                 return NSApplication.TerminateReply.terminateNow
             }
-            // 약관 동의 게이트(미동의)가 떠 있으면 확인 alert 없이 정지 후 종료한다.
-            // (모달 시트 위 NSAlert.runModal()은 교착을 부르고, ⌘Q/종료는 동의 거부 의사다.)
+            // If the terms consent gate (not yet consented) is up, stop then quit without a confirmation alert.
+            // (NSAlert.runModal() on top of a modal sheet causes a deadlock, and ⌘Q/quit means refusing consent.)
             if ConsentStore.needsConsent {
                 stopThenQuit(runner) { NSApp.reply(toApplicationShouldTerminate: true) }
                 return NSApplication.TerminateReply.terminateLater

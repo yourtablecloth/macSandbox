@@ -13,22 +13,22 @@
 
 import Foundation
 
-/// Windows 무인 응답(unattend.xml) 생성.
+/// Windows unattended answer (unattend.xml) generation.
 ///
-/// 현재 설치 방식은 WinPE의 DISM 오프라인 배포이므로, windowsPE 파티셔닝/이미지설치 패스는 없다.
-/// DISM 적용 후 디스크의 `\Windows\Panther\unattend.xml`로 복사되어 첫 부팅(specialize/oobe)을 자동화한다.
+/// The current installation method is WinPE's DISM offline deployment, so there is no windowsPE partitioning/image-install pass.
+/// After DISM is applied, it is copied to the disk's `\Windows\Panther\unattend.xml` to automate the first boot (specialize/oobe).
 final class UnattendBuilder {
 
-    /// DISM 오프라인 적용 후 첫 부팅용 Panther unattend.
-    /// oobeSystem 패스만 사용(specialize에 RunSynchronous를 넣으면 일부 25H2 빌드가 응답 파일을 거부).
-    /// 부트스트랩 관리자 계정(sandboxsetup)으로 자동 로그온 → FirstLogonCommands로 내장
-    /// WDAGUtilityAccount를 활성화(빈 암호·관리자)하고 RDP를 켠 뒤, **마지막에 부트스트랩 계정을
-    /// 비활성화**(net user /active:no)하고 종료한다.
-    /// 샌드박스 사용은 RDP(WDAGUtilityAccount) 단독 세션. 콘솔 자동 로그온이 살아 있으면 단일 세션
-    /// 클라이언트 SKU에서 RDP 세션과 경합(로그온 충돌)한다. 실측 결과:
-    ///  - WDAGUtilityAccount는 특수 계정이라 콘솔 자동 로그온 대상이 될 수 없음(클린 콜드부팅도 sandboxsetup).
-    ///  - `AutoAdminLogon=0`만으로는 OOBE의 fresh-부팅 최초 자동 로그온을 못 막음.
-    ///  → 부트스트랩 계정 자체를 비활성화해야 콘솔 세션이 생기지 않는다(콘솔엔 '계정 사용 불가' 안내만 표시).
+    /// Panther unattend for the first boot after DISM offline application.
+    /// Uses the oobeSystem pass only (putting RunSynchronous in specialize makes some 25H2 builds reject the answer file).
+    /// Auto-logs on with the bootstrap administrator account (sandboxsetup) → via FirstLogonCommands, enables the built-in
+    /// WDAGUtilityAccount (blank password, administrator) and turns on RDP, then **at the end, disables the bootstrap account**
+    /// (net user /active:no) and shuts down.
+    /// Sandbox usage is a sole RDP (WDAGUtilityAccount) session. If console auto-logon is still alive, it races the RDP session
+    /// (logon conflict) on a single-session client SKU. Empirical findings:
+    ///  - WDAGUtilityAccount is a special account, so it cannot be a console auto-logon target (even a clean cold boot uses sandboxsetup).
+    ///  - `AutoAdminLogon=0` alone cannot prevent OOBE's fresh-boot first auto-logon.
+    ///  → The bootstrap account itself must be disabled so no console session is created (the console only shows an 'account unavailable' notice).
     func generatePantherXML(config: InstallConfig) -> String {
         let locale = config.locale
         let winlogon = "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon"

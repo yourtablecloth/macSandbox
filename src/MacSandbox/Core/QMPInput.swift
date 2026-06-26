@@ -14,10 +14,10 @@
 import Foundation
 import Darwin
 
-/// QMP(QEMU Machine Protocol) Unix 소켓으로 게스트에 키보드/마우스 입력을 주입하는 클라이언트.
+/// Client that injects keyboard/mouse input into the guest over a QMP (QEMU Machine Protocol) Unix socket.
 ///
-/// 설치 중 "Press any key to boot from CD or DVD..." 같이 키 입력이 필요한 순간을 자동 처리하거나,
-/// 필요 시 임의의 키/마우스 이벤트를 보낼 수 있다.
+/// Automatically handles moments during installation that require a key press, such as
+/// "Press any key to boot from CD or DVD...", and can send arbitrary key/mouse events as needed.
 final class QMPInputInjector {
     private let socketPath: String
     private var sock: Int32 = -1
@@ -26,9 +26,9 @@ final class QMPInputInjector {
         self.socketPath = socketPath
     }
 
-    // MARK: - 연결
+    // MARK: - Connection
 
-    /// QEMU 기동을 기다리며 연결 + capabilities 협상 (취소 가능)
+    /// Wait for QEMU to start, then connect + negotiate capabilities (cancelable)
     @discardableResult
     func connect(retries: Int = 120, retryDelay: TimeInterval = 0.5) -> Bool {
         for _ in 0..<retries {
@@ -62,7 +62,7 @@ final class QMPInputInjector {
 
         self.sock = s
         _ = readResponse()                                  // QMP greeting
-        _ = sendRaw("{\"execute\":\"qmp_capabilities\"}\n") // 명령 모드 진입
+        _ = sendRaw("{\"execute\":\"qmp_capabilities\"}\n") // enter command mode
         _ = readResponse()
         return true
     }
@@ -73,14 +73,14 @@ final class QMPInputInjector {
         if sock >= 0 { Darwin.close(sock); sock = -1 }
     }
 
-    // MARK: - 입력 이벤트
+    // MARK: - Input events
 
-    /// 키 한 번 (qcode 예: "spc", "ret", "esc", "up", "down")
+    /// A single key (qcode examples: "spc", "ret", "esc", "up", "down")
     func sendKey(_ qcode: String) {
         sendKeyCombo([qcode])
     }
 
-    /// 조합키 동시 입력 (예: ["ctrl","alt","delete"], ["shift","a"])
+    /// Simultaneous key combo (e.g. ["ctrl","alt","delete"], ["shift","a"])
     func sendKeyCombo(_ qcodes: [String]) {
         guard !qcodes.isEmpty else { return }
         let keys = qcodes.map { "{\"type\":\"qcode\",\"data\":\"\($0)\"}" }.joined(separator: ",")
@@ -88,13 +88,13 @@ final class QMPInputInjector {
         _ = readResponse()
     }
 
-    /// 현재 게스트 화면을 PNG 파일로 덤프
+    /// Dump the current guest screen to a PNG file
     func screendump(to path: String) {
         _ = sendRaw("{\"execute\":\"screendump\",\"arguments\":{\"filename\":\"\(path)\",\"format\":\"png\"}}\n")
         _ = readResponse()
     }
 
-    /// 마우스 버튼 클릭 (절대좌표 포인팅 장치 기준; left/right/middle)
+    /// Mouse button click (absolute-coordinate pointing device; left/right/middle)
     func click(button: String = "left") {
         let down = "{\"type\":\"btn\",\"data\":{\"down\":true,\"button\":\"\(button)\"}}"
         let up = "{\"type\":\"btn\",\"data\":{\"down\":false,\"button\":\"\(button)\"}}"
@@ -102,7 +102,7 @@ final class QMPInputInjector {
         _ = readResponse()
     }
 
-    /// 절대좌표 이동 (usb-tablet 기준, 0...32767 정규화 좌표)
+    /// Absolute-coordinate move (usb-tablet, 0...32767 normalized coordinates)
     func moveAbsolute(x: Int, y: Int) {
         let ev = "[{\"type\":\"abs\",\"data\":{\"axis\":\"x\",\"value\":\(x)}},{\"type\":\"abs\",\"data\":{\"axis\":\"y\",\"value\":\(y)}}]"
         _ = sendRaw("{\"execute\":\"input-send-event\",\"arguments\":{\"events\":\(ev)}}\n")

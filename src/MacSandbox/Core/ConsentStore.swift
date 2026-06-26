@@ -14,28 +14,29 @@
 import Foundation
 
 extension Notification.Name {
-    /// 약관 동의 상태가 바뀜(동의/철회) — ContentView가 게이트를 다시 평가한다.
+    /// Terms consent state changed (consent/withdrawal) — ContentView re-evaluates the gate.
     static let msbxConsentChanged = Notification.Name("msbx.consentChanged")
 }
 
-/// 사용 약관(Terms of Use) 동의 게이트 + 기록.
+/// Terms of Use consent gate + record.
 ///
-/// - 약관 본문은 언어별 마크다운(`Terms/<lang>.md`)으로 번들링된다. **현재 버전은 영어판
-///   (`Terms/en.md`)의 "Version X.Y" 표기에서 자동 추출**하므로, 약관을 개정할 때 마크다운의
-///   버전만 올리면 코드 수정 없이 기존 동의자에게 재동의를 받는다(버전 드리프트 방지).
-/// - 최초 실행(또는 약관 버전 상승) 시 동의가 필요하다(`needsConsent`).
-/// - 동의/철회 시: 버전·시점을 **UserDefaults**(게이트 판단용)와 **Application Support의
-///   append-only 감사 로그**(durable 기록)에 남기고, 변경을 알린다(`.msbxConsentChanged`).
-/// - 옵션에서 **철회**(`withdraw`)하면 기록이 지워지고 즉시 동의 게이트가 다시 뜬다.
+/// - The terms text is bundled as per-language markdown (`Terms/<lang>.md`). **The current version is
+///   automatically extracted from the "Version X.Y" notation in the English edition (`Terms/en.md`)**, so when
+///   revising the terms, just bump the version in the markdown to re-request consent from existing consenters
+///   without code changes (prevents version drift).
+/// - On first run (or when the terms version is bumped), consent is required (`needsConsent`).
+/// - On consent/withdrawal: record the version and timestamp in **UserDefaults** (for the gate decision) and an
+///   **append-only audit log in Application Support** (durable record), and announce the change (`.msbxConsentChanged`).
+/// - **Withdrawing** (`withdraw`) from the options clears the record and immediately re-shows the consent gate.
 enum ConsentStore {
-    /// 현재 약관 버전 — 영어판 약관(`Terms/en.md`)의 "Version X.Y"에서 추출(파싱 실패 시 폴백).
-    /// 기존 동의자의 `agreedVersion`과 다르면 재동의를 받는다.
+    /// Current terms version — extracted from "Version X.Y" in the English terms (`Terms/en.md`) (falls back if parsing fails).
+    /// If it differs from an existing consenter's `agreedVersion`, re-consent is requested.
     static let currentVersion: String = parsedTermsVersion() ?? fallbackVersion
 
-    /// 파싱 실패 시 사용할 버전 — 번들 약관의 현재 표기와 맞춰 둔다(파싱은 거의 항상 성공).
+    /// Version to use if parsing fails — kept in sync with the bundled terms' current notation (parsing almost always succeeds).
     private static let fallbackVersion = "1.1"
 
-    /// `Terms/en.md`의 "Version 1.1" 같은 표기에서 버전 번호만 추출한다.
+    /// Extracts just the version number from a notation like "Version 1.1" in `Terms/en.md`.
     private static func parsedTermsVersion() -> String? {
         guard let md = bundledMarkdown(inSubdirectory: "Terms", language: "en"),
               let r = md.range(of: #"Version\s+[0-9]+(\.[0-9]+)*"#, options: .regularExpression)
@@ -47,21 +48,21 @@ enum ConsentStore {
     private static let kVersion = "consent.termsVersion"
     private static let kDate = "consent.agreedAt"
 
-    /// 마지막으로 동의한 약관 버전(없으면 nil).
+    /// Last agreed terms version (nil if none).
     static var agreedVersion: String? { UserDefaults.standard.string(forKey: kVersion) }
-    /// 마지막 동의 시점(ISO8601, 없으면 nil).
+    /// Last consent timestamp (ISO8601, nil if none).
     static var agreedAt: String? { UserDefaults.standard.string(forKey: kDate) }
-    /// 마지막 동의 시점(Date, 없으면 nil) — UI 표시용.
+    /// Last consent timestamp (Date, nil if none) — for UI display.
     static var agreedAtDate: Date? { agreedAt.flatMap { ISO8601DateFormatter().date(from: $0) } }
 
-    /// 현재 버전 약관에 동의한 기록이 없으면 true(최초 실행·버전 상승·철회 후).
+    /// True if there is no record of consenting to the current version of the terms (first run / version bump / after withdrawal).
     static var needsConsent: Bool { agreedVersion != currentVersion }
 
-    /// 현재 언어의 약관 마크다운(없으면 nil — UI는 폴백 안내를 표시).
-    /// 본문은 `Terms/<lang>.md`로 번들링(`.lproj`의 UI 문자열과 분리, Package.swift `.copy("Terms")`).
+    /// The terms markdown for the current language (nil if none — the UI shows fallback guidance).
+    /// The body is bundled as `Terms/<lang>.md` (separate from the `.lproj` UI strings, Package.swift `.copy("Terms")`).
     static func termsMarkdown() -> String? { bundledMarkdown(inSubdirectory: "Terms") }
 
-    /// 동의 기록 — UserDefaults + 감사 로그 파일 + 변경 통지.
+    /// Record consent — UserDefaults + audit log file + change notification.
     static func recordAgreement() {
         let iso = ISO8601DateFormatter().string(from: Date())
         let d = UserDefaults.standard
@@ -71,8 +72,8 @@ enum ConsentStore {
         NotificationCenter.default.post(name: .msbxConsentChanged, object: nil)
     }
 
-    /// 동의 철회 — 기록을 지우고 감사 로그에 철회 이력을 남긴 뒤 변경을 알린다.
-    /// 이후 `needsConsent`가 true가 되어 동의 게이트가 다시 표시된다(옵션에서 호출).
+    /// Withdraw consent — clear the record, leave a withdrawal entry in the audit log, then announce the change.
+    /// Afterward `needsConsent` becomes true and the consent gate is shown again (called from the options).
     static func withdraw() {
         let prev = agreedVersion
         let iso = ISO8601DateFormatter().string(from: Date())
@@ -83,8 +84,8 @@ enum ConsentStore {
         NotificationCenter.default.post(name: .msbxConsentChanged, object: nil)
     }
 
-    /// Application Support/MacSandbox/consent-log.jsonl 에 한 줄(JSON) append.
-    /// 동의/철회 이력을 앱 삭제 전까지 보존(감사/분쟁 대비). 실패해도 상태는 UserDefaults에 남는다.
+    /// Appends one line (JSON) to Application Support/MacSandbox/consent-log.jsonl.
+    /// Preserves the consent/withdrawal history until the app is deleted (for audit/dispute purposes). Even if this fails, the state remains in UserDefaults.
     private static func appendAuditRecord(event: String, version: String, at iso: String) {
         let appVersion = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "dev"
         let record: [String: String] = [
