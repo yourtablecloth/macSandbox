@@ -1,150 +1,150 @@
-# macSandbox for Windows 아키텍처
+# macSandbox for Windows Architecture
 
-macOS(Apple Silicon)에서 Windows 11 ARM64 일회용 샌드박스를 만드는 앱
-(브랜드: **macSandbox for Windows**, 내부 모듈/실행 파일 이름은 `MacSandbox` 유지).
-**런타임은 QEMU + Hypervisor.framework(HVF)** 이고, 베이스라인 이미지는
-**WinPE 기반 DISM 오프라인 배포**로 완전 자동·결정론적으로 구축한다.
+An app that creates disposable Windows 11 ARM64 sandboxes on macOS (Apple Silicon)
+(brand: **macSandbox for Windows**; the internal module/executable name remains `MacSandbox`).
+**The runtime is QEMU + Hypervisor.framework (HVF)**, and the baseline image is
+built fully automatically and deterministically via a **WinPE-based DISM offline deployment**.
 
-## 왜 QEMU인가 (AVF가 아니라)
+## Why QEMU (and not AVF)
 
-Apple Virtualization Framework(AVF)는 게스트로 macOS/Linux만 지원하며, Windows ARM
-게스트에는 virtio-gpu/net 인박스 드라이버가 없어 **화면·네트워크가 동작하지 않는다**.
-Apple Silicon에서 Windows를 실제로 구동하는 길은 QEMU(+HVF) / Parallels / VMware뿐이고,
-오픈소스로 이 자리를 점유하는 것이 QEMU다. (옛 AVF 시도는 git 이력 참고.)
+The Apple Virtualization Framework (AVF) supports only macOS/Linux guests, and Windows ARM
+guests have no inbox virtio-gpu/net drivers, so **display and networking do not work**.
+On Apple Silicon, the only ways to actually run Windows are QEMU (+HVF), Parallels, or VMware,
+and QEMU is the open-source option that fills this role. (See the git history for the earlier AVF attempt.)
 
-- QEMU 바이너리는 `com.apple.security.hypervisor` entitlement로 서명돼야 `-accel hvf`가 동작.
-  `scripts/build.sh`가 `vendor/qemu/bin/qemu-system-aarch64`에 멱등 서명한다.
-- 앱 자체는 특별한 entitlement가 필요 없다(QEMU를 자식 프로세스로 실행할 뿐).
+- The QEMU binary must be signed with the `com.apple.security.hypervisor` entitlement for `-accel hvf` to work.
+  `scripts/build.sh` signs `vendor/qemu/bin/qemu-system-aarch64` idempotently.
+- The app itself needs no special entitlement (it merely runs QEMU as a child process).
 
-## 베이스라인 빌드 — WinPE DISM 배포 (완전 결정론적)
+## Baseline build — WinPE DISM deployment (fully deterministic)
 
-setup.exe + autounattend 방식은 "Press any key to boot from CD"(El Torito) 프롬프트와
-대화형 화면 때문에 키 입력 휴리스틱이 필요했다. 이를 **DISM 오프라인 배포**로 대체해
-**El Torito 프롬프트·키 입력·setup.exe GUI를 모두 제거**했다.
+The setup.exe + autounattend approach required key-press heuristics because of the
+"Press any key to boot from CD" (El Torito) prompt and interactive screens. We replaced it
+with a **DISM offline deployment** that **eliminates the El Torito prompt, key presses, and the setup.exe GUI entirely**.
 
-### 배포 매체 ([WinPEDeployMediaBuilder](src/MacSandbox/Core/WinPEDeployMediaBuilder.swift))
+### Deployment media ([WinPEDeployMediaBuilder](src/MacSandbox/Core/WinPEDeployMediaBuilder.swift))
 
-사용자 ISO로부터 **GPT 파티션 FAT32 부트 디스크**를 만든다:
+Builds a **GPT-partitioned FAT32 boot disk** from the user's ISO:
 
-- `\EFI\BOOT\BOOTAA64.EFI` ← `bootmgfw.efi` (install.wim에서 wimlib로 추출)
-- `\EFI\Microsoft\Boot\BCD` ← ISO의 BCD (그대로 — ramdisk 소스가 `[boot]` 상대참조라 패치 불필요)
-- `\Boot\boot.sdi`, `\sources\boot.wim`(편집본)
+- `\EFI\BOOT\BOOTAA64.EFI` ← `bootmgfw.efi` (extracted from install.wim with wimlib)
+- `\EFI\Microsoft\Boot\BCD` ← the ISO's BCD (as-is — the ramdisk source uses a `[boot]` relative reference, so no patching is needed)
+- `\Boot\boot.sdi`, `\sources\boot.wim` (edited)
 
-> **핵심**: bootmgr는 `[boot]` 장치를 실제 파티션으로 매핑하므로 **GPT 파티션**이어야 한다.
-> 슈퍼플로피(파티션 테이블 없음)는 "No mapping"으로 실패한다. → 펌웨어가 프롬프트 없이 WinPE 직접 부팅.
+> **Key point**: bootmgr maps the `[boot]` device to a real partition, so it must be a **GPT partition**.
+> A superfloppy (no partition table) fails with "No mapping". → The firmware boots WinPE directly with no prompt.
 
-`boot.wim` image 2(Setup)는 `winpeshl.ini`로 setup.exe를 띄우므로, wimlib로 image 2에
-다음을 주입해 setup.exe 대신 배포 스크립트를 실행시킨다:
+`boot.wim` image 2 (Setup) launches setup.exe via `winpeshl.ini`, so wimlib is used to inject
+the following into image 2, running the deployment script instead of setup.exe:
 
 - `winpeshl.ini` → `cmd /c X:\Windows\System32\deploy.cmd`
-- `deploy.cmd`: `diskpart`(NVMe GPT: ESP/MSR/NTFS) → install.wim 탐색 →
-  `dism /Apply-Image /Name:"<edition>" /ApplyDir:W:\` → **virtio-win 드라이버 오프라인 주입**
-  (`dism /Image:W:\ /Add-Driver /Recurse`) → Panther unattend 복사 →
-  `bcdboot W:\Windows /s S: /f UEFI` → `bootmgfw.efi`를 ESP의 `\EFI\BOOT\BOOTAA64.EFI`로 복사 → `wpeutil shutdown`
-- `msbx-dp.txt`(diskpart 스크립트), `unattend.xml`(Panther)
+- `deploy.cmd`: `diskpart` (NVMe GPT: ESP/MSR/NTFS) → locate install.wim →
+  `dism /Apply-Image /Name:"<edition>" /ApplyDir:W:\` → **offline injection of virtio-win drivers**
+  (`dism /Image:W:\ /Add-Driver /Recurse`) → copy Panther unattend →
+  `bcdboot W:\Windows /s S: /f UEFI` → copy `bootmgfw.efi` to the ESP's `\EFI\BOOT\BOOTAA64.EFI` → `wpeutil shutdown`
+- `msbx-dp.txt` (diskpart script), `unattend.xml` (Panther)
 
-### virtio-win 드라이버 주입 ([GuestDrivers](src/MacSandbox/Core/GuestDrivers.swift))
+### virtio-win driver injection ([GuestDrivers](src/MacSandbox/Core/GuestDrivers.swift))
 
-배포 단계에 `virtio-win.iso`(없으면 fedorapeople에서 자동 다운로드, ~750MB 캐시)를 USB cdrom으로
-추가로 물린다. `deploy.cmd`가 `\NetKVM` 마커로 ISO 드라이브를 찾아 오프라인 이미지(W:\)에
-`/Add-Driver /Recurse`로 주입한다. ARM64 인박스에 없는 **NetKVM(virtio-net)** 이 핵심 —
-이게 있어야 런타임에 RDP가 동작한다. (viostor·viogpudo·vioinput 등 ARM64 드라이버도 함께 주입.)
+During the deployment phase, `virtio-win.iso` (auto-downloaded from fedorapeople if absent, ~750 MB cached) is
+attached as an additional USB cdrom. `deploy.cmd` locates the ISO drive via the `\NetKVM` marker and injects
+the drivers into the offline image (W:\) with `/Add-Driver /Recurse`. The crucial one is **NetKVM (virtio-net)**,
+which the ARM64 inbox lacks — it is what makes RDP work at runtime. (Other ARM64 drivers such as viostor, viogpudo, and vioinput are injected as well.)
 
-### 2단계 오케스트레이션 ([BaselineBuilder](src/MacSandbox/Core/BaselineBuilder.swift))
+### Two-phase orchestration ([BaselineBuilder](src/MacSandbox/Core/BaselineBuilder.swift))
 
-1. **Phase 1 (배포)**: GPT FAT 부트디스크 + Windows ISO + 빈 NVMe(`nvme`)로 부팅.
-   WinPE가 프롬프트·키 0으로 떠서 `deploy.cmd` 실행 → `dism` 적용 → `bcdboot` → shutdown(QEMU exit).
-2. **Phase 2 (OOBE)**: NVMe만으로 부팅(펌웨어가 ESP의 `\EFI\BOOT\BOOTAA64.EFI` 자동 부팅).
-   `\Windows\Panther\unattend.xml`(oobeSystem-only)이 첫 부팅을 자동화:
-   부트스트랩 admin 자동 로그온 → FirstLogonCommands로 내장 **WDAGUtilityAccount** 활성화 +
-   영구 자동 로그온 + **RDP 서버 활성화**(`fDenyTSConnections=0`, NLA off, `LimitBlankPasswordUse=0`,
-   방화벽 remote-desktop 그룹 허용) + 로그온 에이전트(Run 키) 설정 → `shutdown` → 베이스라인 완료(status=ready).
+1. **Phase 1 (deployment)**: Boot from the GPT FAT boot disk + Windows ISO + an empty NVMe (`nvme`).
+   WinPE comes up with zero prompts or key presses and runs `deploy.cmd` → applies `dism` → `bcdboot` → shutdown (QEMU exit).
+2. **Phase 2 (OOBE)**: Boot from the NVMe alone (the firmware auto-boots the ESP's `\EFI\BOOT\BOOTAA64.EFI`).
+   `\Windows\Panther\unattend.xml` (oobeSystem-only) automates the first boot:
+   bootstrap admin auto-logon → FirstLogonCommands enable the built-in **WDAGUtilityAccount** +
+   set up permanent auto-logon + **enable the RDP server** (`fDenyTSConnections=0`, NLA off, `LimitBlankPasswordUse=0`,
+   allow the firewall remote-desktop group) + configure the logon agent (Run key) → `shutdown` → baseline complete (status=ready).
 
-> Panther unattend는 oobeSystem 패스만 쓴다. specialize에 `Microsoft-Windows-Deployment`
-> RunSynchronous를 넣으면 일부 25H2 빌드가 "응답 파일이 올바르지 않음"으로 거부한다.
+> The Panther unattend uses only the oobeSystem pass. Adding a `Microsoft-Windows-Deployment`
+> RunSynchronous to specialize causes some 25H2 builds to reject it as "the answer file is invalid".
 
-## 샌드박스 런타임 ([SandboxRunner](src/MacSandbox/Core/SandboxRunner.swift) / [SandboxConfig](src/MacSandbox/Core/SandboxConfig.swift))
+## Sandbox runtime ([SandboxRunner](src/MacSandbox/Core/SandboxRunner.swift) / [SandboxConfig](src/MacSandbox/Core/SandboxConfig.swift))
 
-베이스라인 위에 일회용 환경을 띄운다(Windows Sandbox의 `.wsb`에 대응):
+Brings up a disposable environment on top of the baseline (the counterpart to Windows Sandbox's `.wsb`):
 
-1. 베이스라인 qcow2 위에 **COW 오버레이**(`qemu-img create -b`) + 신선한 UEFI 변수 사본.
-2. `SandboxConfig`(메모리/CPU/네트워킹/vGPU/공유폴더/클립보드/마이크/프린터/로그온 명령)를
-   QEMU 인자·RDP 플래그·설정 디스크로 번역. **기본값은 Windows Sandbox 표준**과 일치한다.
-3. QEMU 부팅 → 콘솔은 세션 없음(부트스트랩 계정 비활성), RDP로 WDAGUtilityAccount 로그온.
-   종료(또는 FreeRDP 창 닫힘) 시 disposable이면 오버레이/변수/설정 디스크 폐기.
+1. A **COW overlay** (`qemu-img create -b`) on top of the baseline qcow2 + a fresh copy of the UEFI variables.
+2. Translates `SandboxConfig` (memory/CPU/networking/vGPU/shared folder/clipboard/microphone/printer/logon command)
+   into QEMU arguments, RDP flags, and a config disk. **The defaults match the Windows Sandbox standard.**
+3. QEMU boots → the console has no session (the bootstrap account is disabled), and WDAGUtilityAccount logs on via RDP.
+   On exit (or when the FreeRDP window closes), the overlay/variables/config disk are discarded if disposable.
 
-로그온 명령은 작은 FAT 설정 디스크의 `macsandbox-logon.cmd`로 전달되고, 베이스라인의
-로그온 에이전트(HKLM Run 키)가 실행한다.
+The logon command is passed via `macsandbox-logon.cmd` on a small FAT config disk, and the baseline's
+logon agent (HKLM Run key) runs it.
 
-## RDP 하이브리드 (상호작용 + 리다이렉션)
+## RDP hybrid (interaction + redirection)
 
-Windows Sandbox 자신이 내부적으로 RDP를 쓰는 것과 같은 접근. 두 경로를 병행한다:
+The same approach Windows Sandbox itself uses internally with RDP. Two paths run in parallel:
 
-- **부팅 모니터링**: VNC 프레임버퍼 → QMP `screendump` 폴링 → 인앱 콘솔([VMConsole](src/MacSandbox/Core/VMConsole.swift)).
-  화면 클릭(절대좌표)·키보드(`QKeyMap`)로 부팅 중에도 개입 가능.
-- **사용자 상호작용**: 게스트가 뜨면 **FreeRDP**(`sdl-freerdp`) 창으로 접속([RDPSession](src/MacSandbox/Core/RDPSession.swift)).
-  폴더 공유(`/drive`)·클립보드(`+clipboard`)·마이크/오디오(`/microphone` `/sound`)·프린터(`/printer`)
-  리다이렉션을 제공. (웹캠은 이 FreeRDP 빌드에 RDPECAM 채널이 없어 미지원.)
+- **Boot monitoring**: VNC framebuffer → QMP `screendump` polling → in-app console ([VMConsole](src/MacSandbox/Core/VMConsole.swift)).
+  Screen clicks (absolute coordinates) and the keyboard (`QKeyMap`) allow intervention even during boot.
+- **User interaction**: Once the guest is up, connect via a **FreeRDP** (`sdl-freerdp`) window ([RDPSession](src/MacSandbox/Core/RDPSession.swift)).
+  Provides folder sharing (`/drive`), clipboard (`+clipboard`), microphone/audio (`/microphone` `/sound`), and printer (`/printer`)
+  redirection. (Webcam is unsupported because this FreeRDP build has no RDPECAM channel.)
 
-QEMU는 user-mode NAT + `hostfwd=tcp:127.0.0.1:<port>-:3389`로 RDP를 호스트에 노출하고,
-FreeRDP가 `WDAGUtilityAccount`/빈 암호/`/sec:tls`(서버가 plain RDP를 SSL_REQUIRED로 거부)로 로그온한다.
-네트워킹 비활성 시 `restrict=on`으로 인터넷은 막되 RDP 포워딩은 유지.
+QEMU exposes RDP on the host via user-mode NAT + `hostfwd=tcp:127.0.0.1:<port>-:3389`, and
+FreeRDP logs on with `WDAGUtilityAccount` / a blank password / `/sec:tls` (the server rejects plain RDP as SSL_REQUIRED).
+When networking is disabled, `restrict=on` blocks the internet while keeping RDP forwarding.
 
-> user-mode hostfwd는 게스트 RDP 준비 전에도 호스트측 connect를 수락하므로 포트 폴링으로
-> 준비를 판정할 수 없다. 대신 FreeRDP를 **재시도 루프**로 띄워(짧게 실패=미준비→재시도,
-> 오래 살다 종료=세션 종료→QEMU 종료) 게스트 RDP가 뜨는 시점을 자연스럽게 따라간다.
+> A user-mode hostfwd accepts host-side connects even before the guest RDP is ready, so port polling
+> cannot determine readiness. Instead, FreeRDP is launched in a **retry loop** (a quick failure = not ready → retry;
+> a long-lived process that exits = session ended → QEMU shutdown), naturally tracking when the guest RDP comes up.
 
-> **콘솔↔RDP 단일세션 경합 방지**: Win11 클라이언트 SKU는 인터랙티브 세션 1개라 콘솔 자동
-> 로그온이 RDP(WDAGUtilityAccount) 세션과 충돌한다. WDAGUtilityAccount는 콘솔 자동 로그온
-> 대상이 될 수 없고 `AutoAdminLogon=0`만으로는 OOBE 최초 자동 로그온을 못 막으므로, 베이스라인
-> FirstLogonCommands가 **부트스트랩 계정(sandboxsetup)을 비활성화**해 콘솔 세션이 안 생기게 한다.
+> **Avoiding the console↔RDP single-session conflict**: The Win11 client SKU allows one interactive session, so the
+> console auto-logon conflicts with the RDP (WDAGUtilityAccount) session. WDAGUtilityAccount cannot be a console
+> auto-logon target, and `AutoAdminLogon=0` alone cannot prevent the first OOBE auto-logon, so the baseline's
+> FirstLogonCommands **disable the bootstrap account (sandboxsetup)** to prevent a console session from being created.
 
-## UI 흐름 + 구성 입력
+## UI flow + configuration input
 
-GUI는 단일 창 라우터([ContentView](src/MacSandbox/Views/ContentView.swift)):
+The GUI is a single-window router ([ContentView](src/MacSandbox/Views/ContentView.swift)):
 
-- **베이스라인 없음** → [BuildView](src/MacSandbox/Views/ContentView.swift) (ISO + 에디션만 골라 1-round 빌드). 완료 시 자동 전환.
-- **베이스라인 있음** → 곧바로 샌드박스 시작([SandboxView](src/MacSandbox/Views/SandboxView.swift)). 시작 버튼 없음.
-  - **부팅 중**: "샌드박스 부팅 중" 안내 + 현재 메시지만. 콘솔/로그는 "더 보기"로 펼친다.
-  - **RDP 확립**(`SandboxRunner.rdpConnected`, FreeRDP 동적 채널 로드 감지) → `NSApp.hide`로 앱 창을 숨겨 **FreeRDP 창만 남긴다**. 샌드박스 종료 시 다시 표시.
-  - **종료 후**: 다시 시작 / `.wsb` 불러오기.
+- **No baseline** → [BuildView](src/MacSandbox/Views/ContentView.swift) (pick only the ISO + edition for a 1-round build). Switches automatically when complete.
+- **Baseline present** → start the sandbox immediately ([SandboxView](src/MacSandbox/Views/SandboxView.swift)). No start button.
+  - **Booting**: A "sandbox booting" notice + only the current message. The console/log expand via "Show more".
+  - **RDP established** (`SandboxRunner.rdpConnected`, detected by FreeRDP dynamic channel load) → `NSApp.hide` hides the app window, **leaving only the FreeRDP window**. Shown again when the sandbox exits.
+  - **After exit**: restart / load a `.wsb`.
 
-세부 옵션은 GUI 토글이 아니라 **`.wsb` 파일/커맨드라인 스위치**로 지정한다([WSBConfig](src/MacSandbox/Core/WSBConfig.swift) / AppLaunch). 기본값은 Windows Sandbox 표준(네트워킹·클립보드·오디오 on, 웹캠·프린터 off, ~4GB).
+Detailed options are specified not via GUI toggles but via the **`.wsb` file / command-line switches** ([WSBConfig](src/MacSandbox/Core/WSBConfig.swift) / AppLaunch). The defaults follow the Windows Sandbox standard (networking, clipboard, and audio on; webcam and printer off; ~4 GB).
 
-## 구성 요소
+## Components
 
-| 파일 | 역할 |
+| File | Role |
 | ---- | ---- |
-| `SandboxPaths` | app support 경로, vendor/qemu·wimlib·펌웨어 해석 |
-| `DiskService` | qcow2 생성, COW 오버레이(샌드박스 런타임용) |
-| `WinPEDeployMediaBuilder` | GPT FAT32 배포 부트 디스크 생성 |
-| `QEMURuntime` | 배포/OOBE/샌드박스 인자 빌드(RDP hostfwd 포함), 프로세스 실행 |
-| `UnattendBuilder` | Panther unattend(oobeSystem, RDP 활성화 포함) 생성 |
-| `BaselineBuilder` | 2단계 빌드 오케스트레이션 |
-| `GuestDrivers` | virtio-win ISO 확보(자동 다운로드/캐시) |
-| `SandboxRunner` / `SandboxConfig` | 일회용 샌드박스 실행(COW 오버레이 + RDP 하이브리드) |
-| `RDPSession` | FreeRDP 인자 빌드 + 재시도 실행 |
-| `WSBConfig` / `AppLaunch` | `.wsb`(XML) 파서 + 커맨드라인 스위치 → SandboxConfig |
-| `ContentView` / `BuildView` / `SandboxView` | 라우터(빌드↔시작 화면) + 각 화면 |
-| `QMPInput` / `VMConsole` | QMP 입력 주입 + 화면 폴링 |
+| `SandboxPaths` | app support paths; resolves vendor/qemu, wimlib, and firmware |
+| `DiskService` | qcow2 creation; COW overlay (for the sandbox runtime) |
+| `WinPEDeployMediaBuilder` | creates the GPT FAT32 deployment boot disk |
+| `QEMURuntime` | builds deployment/OOBE/sandbox arguments (including the RDP hostfwd), runs the process |
+| `UnattendBuilder` | generates the Panther unattend (oobeSystem, including RDP enablement) |
+| `BaselineBuilder` | orchestrates the two-phase build |
+| `GuestDrivers` | obtains the virtio-win ISO (auto-download/cache) |
+| `SandboxRunner` / `SandboxConfig` | runs the disposable sandbox (COW overlay + RDP hybrid) |
+| `RDPSession` | builds FreeRDP arguments + runs with retry |
+| `WSBConfig` / `AppLaunch` | `.wsb` (XML) parser + command-line switches → SandboxConfig |
+| `ContentView` / `BuildView` / `SandboxView` | router (build↔start screens) + each screen |
+| `QMPInput` / `VMConsole` | QMP input injection + screen polling |
 
-## 의존성
+## Dependencies
 
-- `vendor/qemu` (qemu-system-aarch64, qemu-img, edk2 펌웨어) — `scripts/bundle_qemu.py`로 번들
-- `wimlib` (`brew install wimlib`) — boot.wim 편집 + bootmgfw 추출
-- `freerdp` (`brew install freerdp` → `sdl-freerdp`) — 샌드박스 상호작용 + 리다이렉션
-- `virtio-win.iso` — 게스트 virtio 드라이버(자동 다운로드, app support 캐시)
-- `hdiutil` / `diskutil` (macOS 기본) — ISO 마운트, GPT FAT32 디스크 생성
+- `vendor/qemu` (qemu-system-aarch64, qemu-img, edk2 firmware) — bundled by `scripts/bundle_qemu.py`
+- `wimlib` (`brew install wimlib`) — boot.wim editing + bootmgfw extraction
+- `freerdp` (`brew install freerdp` → `sdl-freerdp`) — sandbox interaction + redirection
+- `virtio-win.iso` — guest virtio drivers (auto-download, cached in app support)
+- `hdiutil` / `diskutil` (built into macOS) — ISO mounting, GPT FAT32 disk creation
 
 ## CLI
 
-- `MacSandbox --headless-build [ISO경로]` — GUI 없이 베이스라인 빌드 후 종료(검증/자동화용).
-- `MacSandbox <config.wsb>` / `MacSandbox --wsb <config.wsb>` — `.wsb` 구성으로 시작.
-- `MacSandbox --run [스위치...]` — 스위치로 구성 후 시작. 스위치:
+- `MacSandbox --headless-build [ISO_PATH]` — build the baseline without the GUI, then exit (for verification/automation).
+- `MacSandbox <config.wsb>` / `MacSandbox --wsb <config.wsb>` — start with a `.wsb` configuration.
+- `MacSandbox --run [switches...]` — configure via switches, then start. Switches:
   `--memory <MB>` `--cpus <N>` `--networking on|off` `--vgpu on|off`
   `--clipboard on|off` `--audio on|off` `--printer on|off`
-  `--folder <경로>[:ro]`(반복) `--logon "<명령>"`
-- 스위치/`.wsb` 미지정 시 GUI는 Windows Sandbox 표준 기본값으로 시작 화면을 띄운다.
-  `.wsb`/`--folder`/`--run`이 있으면 베이스라인 준비 시 자동 시작.
+  `--folder <path>[:ro]` (repeatable) `--logon "<command>"`
+- When no switches or `.wsb` are specified, the GUI shows the start screen with the Windows Sandbox standard defaults.
+  If `.wsb`/`--folder`/`--run` is present, it starts automatically once the baseline is ready.
 
-`.wsb`는 Windows Sandbox와 호환되는 XML이다(예: `examples/sample.wsb`). HostFolder는 macOS 경로로 해석.
+A `.wsb` is XML compatible with Windows Sandbox (e.g., `examples/sample.wsb`). HostFolder is resolved as a macOS path.

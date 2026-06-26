@@ -1,7 +1,7 @@
 <Configuration>
-  <!-- MacSandbox 샘플 구성 (.wsb). Windows Sandbox와 호환되는 스키마.
-       값은 Enable | Disable | Default. 미지정 항목은 Windows Sandbox 표준 기본값을 따른다.
-       HostFolder는 macOS 호스트 경로로 해석한다(~ 확장 지원). -->
+  <!-- MacSandbox sample configuration (.wsb). A schema compatible with Windows Sandbox.
+       Values are Enable | Disable | Default. Unspecified fields follow the Windows Sandbox standard defaults.
+       HostFolder is resolved as a macOS host path (~ expansion supported). -->
 
   <Networking>Enable</Networking>
   <ClipboardRedirection>Enable</ClipboardRedirection>
@@ -11,7 +11,7 @@
   <VGpu>Disable</VGpu>
 
   <MemoryInMB>4096</MemoryInMB>
-  <!-- CpuCores는 Windows Sandbox엔 없는 MacSandbox 확장 항목 -->
+  <!-- CpuCores is a MacSandbox extension field that does not exist in Windows Sandbox -->
   <CpuCores>4</CpuCores>
 
   <MappedFolders>

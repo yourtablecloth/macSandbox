@@ -1,4 +1,4 @@
-# GitHub Pages (Jekyll) — 저장소 설정에서 Pages 소스를 "main 브랜치 / docs 폴더"로 지정.
+# GitHub Pages (Jekyll) — in the repository settings, set the Pages source to "main branch / docs folder".
 theme: jekyll-theme-cayman
 title: macSandbox for Windows
 description: Disposable Windows 11 ARM64 sandbox for Apple Silicon Macs

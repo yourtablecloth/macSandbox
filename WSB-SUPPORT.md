@@ -3,111 +3,111 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 Copyright (C) 2026 Nam Jung Hyun (rkttu)
 -->
 
-# Windows Sandbox `.wsb` 구성 지원 현황
+# Windows Sandbox `.wsb` Configuration Support Status
 
-MacSandbox는 Microsoft **Windows Sandbox**의 `.wsb`(XML) 구성 파일 스키마를 차용한다.
-다만 실행 방식이 다르다 — Windows Sandbox는 Hyper-V 컨테이너이고, MacSandbox는
-**QEMU+HVF 가상 머신 + FreeRDP(임베드) 하이브리드**다. 따라서 일부 항목은 의미가 다르거나
-미구현이다. 이 문서는 각 `.wsb` 항목이 **실제로 무엇을 하는지/하지 않는지**를 정리한다.
+MacSandbox borrows the `.wsb` (XML) configuration file schema from Microsoft's **Windows Sandbox**.
+The execution model differs, however — Windows Sandbox is a Hyper-V container, whereas MacSandbox is a
+**QEMU+HVF virtual machine + FreeRDP (embedded) hybrid**. As a result, some fields have a different meaning
+or are unimplemented. This document lays out **what each `.wsb` field actually does (and does not do)**.
 
-- 파싱·매핑: [`WSBConfig.swift`](src/MacSandbox/Core/WSBConfig.swift) → [`SandboxConfig`](src/MacSandbox/Core/SandboxConfig.swift)
-- 적용 시점: **매 실행(런타임)**. 장치/네트워크/디스플레이/메모리는 [`QEMURuntime`](src/MacSandbox/Core/QEMURuntime.swift),
-  리다이렉션(클립보드·오디오)은 임베드 엔진 [`rdp_engine.c`](src/CFreeRDP/rdp_engine.c)가 처리한다.
-- 사용: 파일 더블클릭/연결 대신 CLI 스위치 또는 `.wsb` 경로로 지정.
+- Parsing/mapping: [`WSBConfig.swift`](src/MacSandbox/Core/WSBConfig.swift) → [`SandboxConfig`](src/MacSandbox/Core/SandboxConfig.swift)
+- Applied: **on every run (at runtime)**. Devices/network/display/memory are handled by [`QEMURuntime`](src/MacSandbox/Core/QEMURuntime.swift),
+  and redirection (clipboard/audio) by the embedded engine [`rdp_engine.c`](src/CFreeRDP/rdp_engine.c).
+- Usage: specify via a CLI switch or a `.wsb` path instead of double-clicking/associating the file.
 
-## 지원 매트릭스
+## Support matrix
 
-| `.wsb` 항목 | 공식 의미 | MacSandbox | 비고 |
+| `.wsb` field | Official meaning | MacSandbox | Notes |
 |---|---|:---:|---|
-| `MemoryInMB` | 메모리(MB), 최소 2048 자동 보정 | ✅ 지원 | 호스트 인지형 기본값 + `[4GB, 호스트−4GB]` 클램프(Win11 ARM 최소 4GB) |
-| `Networking` | 네트워크 on/off | ✅ 지원 | Enable=virtio-net NAT(user), Disable=`restrict=on`(외부 차단). 게스트 NetKVM 드라이버는 베이스라인에 주입 |
-| `LogonCommand`/`Command` | 로그온 후 명령 실행 | ✅ 지원 | FAT 설정 디스크 + 베이스라인 로그온 에이전트(`macsandbox-logon.cmd`)로 전달 |
-| `ClipboardRedirection` | 클립보드 공유 | ✅ 지원 | 텍스트·파일 양방향. `Disable` 시 cliprdr 미로드(검증됨) |
-| `AudioInput` | 마이크 공유 | ✅ 지원 | 마이크(audin)를 게이팅. 스피커 재생(rdpsnd)은 `.wsb` 토글이 없어 상시(Windows Sandbox와 동일) |
-| `PrinterRedirection` | 프린터 공유 | ✅ 지원 | `RedirectPrinters`+rdpdr+CUPS → 호스트 프린터를 게스트에 등록(PRN1 검증). `Disable` 시 미등록 |
-| `vGPU` | GPU 가속(Disable 시 WARP) | ⚠️ 부분/의미 상이 | **QEMU 콘솔(VNC 부팅 모니터) 표시 장치**(ramfb↔virtio-gpu-pci)만 전환. 사용자 화면(RDP)엔 영향 없고 WDDM 가속 없음(DWM은 소프트웨어 합성) |
-| `MappedFolders` | 호스트 폴더 공유 | ✅ 지원 | RDP rdpdr drive로 `\\tsclient\<리프>` 노출 + 게스트에 자동 마운트(링크). `SandboxFolder` 지정 시 그 경로, 없으면 **WDAGUtilityAccount 바탕화면\리프**. `ReadOnly` 미강제, 최대 16개 |
-| `VideoInput` | 웹캠 공유 | ❌ 미지원 | RDPECAM 채널이 번들 libfreerdp에서 비활성 + macOS 카메라 백엔드 부재(별도 분석 참조) |
-| `ProtectedClient` | RDP AppContainer 강화 | ❌ 미지원 | 미파싱. Hyper-V AppContainer 개념이라 QEMU+RDP에 매핑 불가 |
+| `MemoryInMB` | Memory (MB), auto-corrected to a minimum of 2048 | ✅ Supported | Host-aware default + `[4GB, host−4GB]` clamp (Win11 ARM minimum 4GB) |
+| `Networking` | Network on/off | ✅ Supported | Enable = virtio-net NAT (user); Disable = `restrict=on` (external access blocked). The guest NetKVM driver is injected into the baseline |
+| `LogonCommand`/`Command` | Run a command after logon | ✅ Supported | Delivered via a FAT config disk + the baseline logon agent (`macsandbox-logon.cmd`) |
+| `ClipboardRedirection` | Clipboard sharing | ✅ Supported | Text and files, both directions. On `Disable`, cliprdr is not loaded (verified) |
+| `AudioInput` | Microphone sharing | ✅ Supported | Gates the microphone (audin). Speaker playback (rdpsnd) has no `.wsb` toggle, so it is always on (same as Windows Sandbox) |
+| `PrinterRedirection` | Printer sharing | ✅ Supported | `RedirectPrinters` + rdpdr + CUPS → registers host printers in the guest (PRN1 verified). On `Disable`, not registered |
+| `vGPU` | GPU acceleration (WARP when Disable) | ⚠️ Partial / different meaning | Only switches the **QEMU console (VNC boot monitor) display device** (ramfb↔virtio-gpu-pci). No effect on the user's display (RDP) and no WDDM acceleration (DWM composites in software) |
+| `MappedFolders` | Host folder sharing | ✅ Supported | Exposed via RDP rdpdr drive as `\\tsclient\<leaf>` + auto-mounted (linked) in the guest. The `SandboxFolder` path if specified, otherwise **WDAGUtilityAccount desktop\leaf**. `ReadOnly` not enforced, up to 16 |
+| `VideoInput` | Webcam sharing | ❌ Unsupported | The RDPECAM channel is disabled in the bundled libfreerdp + no macOS camera backend (see separate analysis) |
+| `ProtectedClient` | RDP AppContainer hardening | ❌ Unsupported | Not parsed. A Hyper-V AppContainer concept, so it cannot be mapped onto QEMU+RDP |
 
-> 확장(비표준): `CpuCores` — 실제 `.wsb`엔 없는 MacSandbox 전용 항목. ✅ 지원, `[2, 호스트−2]` 클램프.
+> Extension (non-standard): `CpuCores` — a MacSandbox-only field that does not exist in the real `.wsb`. ✅ Supported, `[2, host−2]` clamp.
 
-## 항목별 상세
+## Per-field detail
 
-### ✅ 완전 지원
+### ✅ Fully supported
 
-- **MemoryInMB** — 값을 받되 `[4GB, 호스트−4GB]`로 클램프(과할당 방지 + Win11 ARM 최소 4GB 보장).
-  미지정 시 호스트 RAM의 약 절반(16GB 호스트 → 8GB).
-- **Networking** — `Enable`(기본): QEMU user-mode NAT(`hostfwd`로 RDP 포워딩 포함). `Disable`: `restrict=on`으로
-  외부 접근 차단(RDP 루프백은 유지). 게스트에서 동작하려면 NetKVM(virtio-net) 드라이버 필요 — 베이스라인에 주입됨.
-- **LogonCommand** — `<Command>` 문자열을 FAT 설정 디스크의 `macsandbox-logon.cmd`로 기록하고,
-  베이스라인이 로그온 시 이동식 드라이브를 스캔해 실행한다(unattend Run 키 에이전트). 다중 단계 명령은
-  스크립트 파일로 작성 권장(공식 권고와 동일).
-- **ClipboardRedirection** — 텍스트·파일 양방향 클립보드. 값을 엔진 `RedirectClipboard`로 게이팅하며,
-  `Disable` 시 cliprdr 채널이 로드되지 않음(검증됨).
-- **AudioInput** — 마이크 입력(audin, macOS AVFAudio)을 게이팅. `Disable` 시 audin 미로드.
-  스피커 재생(rdpsnd, CoreAudio)은 `.wsb`에 토글이 없어 항상 켜짐(Windows Sandbox와 동일).
-  최초 마이크 사용 시 macOS 권한 프롬프트.
-- **PrinterRedirection** — 엔진 `RedirectPrinters` + rdpdr + libfreerdp CUPS 백엔드로 호스트 프린터를
-  게스트에 등록(검증: `registered [printer] device PRN1`). `Disable`(기본) 시 미등록.
-- **MappedFolders** — **RDP 수준 구현**(QEMU 9p/virtfs 아님): FreeRDP rdpdr drive 장치
-  (`freerdp_client_add_device_channel`)로 **지정 폴더만** 게스트에 `\\tsclient\<리프>`로 노출(드라이브명 =
-  폴더 리프, 충돌 시 번호). 게스트 드라이버 불필요, 읽기+쓰기 end-to-end 검증됨. 최대 16개.
-  - **게스트 마운트 위치**: 로그온 에이전트가 `\\tsclient\<리프>`에 링크를 만든다. `SandboxFolder` 지정 시
-    그 절대경로, 없으면 **WDAGUtilityAccount 바탕화면\리프**(Windows Sandbox와 동일).
-    개발자 모드(베이스라인에 활성화)면 `mklink /D` 심볼릭 링크(폴더처럼), 비활성 베이스라인에선 `.lnk`
-    바로가기로 폴백(검증됨). 심링크는 비상승 SeCreateSymbolicLinkPrivilege가 없어 개발자 모드가 필요.
-  - **제한**: `ReadOnly`는 FreeRDP drive가 미지원이라 강제되지 않음(읽기/쓰기로 공유 — 패치 빌드 외 불가).
-    `RedirectDrives`(핫플러그 전체 볼륨 공유)는 보안상 쓰지 않음.
+- **MemoryInMB** — Accepts the value but clamps it to `[4GB, host−4GB]` (preventing over-allocation + guaranteeing the Win11 ARM minimum of 4GB).
+  When unspecified, about half the host RAM (16GB host → 8GB).
+- **Networking** — `Enable` (default): QEMU user-mode NAT (including RDP forwarding via `hostfwd`). `Disable`: `restrict=on`
+  blocks external access (RDP loopback is retained). The NetKVM (virtio-net) driver is required for it to work in the guest — it is injected into the baseline.
+- **LogonCommand** — Writes the `<Command>` string to `macsandbox-logon.cmd` on the FAT config disk, and
+  at logon the baseline scans removable drives and runs it (the unattend Run-key agent). For multi-step commands,
+  writing a script file is recommended (same as the official guidance).
+- **ClipboardRedirection** — Two-way text and file clipboard. The value gates the engine's `RedirectClipboard`, and
+  on `Disable` the cliprdr channel is not loaded (verified).
+- **AudioInput** — Gates microphone input (audin, macOS AVFAudio). On `Disable`, audin is not loaded.
+  Speaker playback (rdpsnd, CoreAudio) has no `.wsb` toggle, so it is always on (same as Windows Sandbox).
+  A macOS permission prompt appears on first microphone use.
+- **PrinterRedirection** — Registers host printers in the guest via the engine's `RedirectPrinters` + rdpdr + the libfreerdp CUPS backend
+  (verified: `registered [printer] device PRN1`). On `Disable` (default), not registered.
+- **MappedFolders** — An **RDP-level implementation** (not QEMU 9p/virtfs): the FreeRDP rdpdr drive device
+  (`freerdp_client_add_device_channel`) exposes **only the specified folders** in the guest as `\\tsclient\<leaf>` (drive name =
+  folder leaf; numbered on collision). No guest driver needed; read+write verified end-to-end. Up to 16.
+  - **Guest mount location**: The logon agent creates a link at `\\tsclient\<leaf>`. The `SandboxFolder` absolute path
+    if specified, otherwise the **WDAGUtilityAccount desktop\leaf** (same as Windows Sandbox).
+    With developer mode (enabled in the baseline), an `mklink /D` symbolic link (folder-like); on a non-enabled baseline it
+    falls back to a `.lnk` shortcut (verified). The symlink requires developer mode because there is no unelevated SeCreateSymbolicLinkPrivilege.
+  - **Limitations**: `ReadOnly` is not enforced because the FreeRDP drive does not support it (shared read/write — impossible without a patched build).
+    `RedirectDrives` (hot-plug whole-volume sharing) is not used for security reasons.
 
-### ⚠️ 부분 지원 (known limitation)
+### ⚠️ Partial support (known limitation)
 
-- **vGPU** — `.wsb`의 본래 의미는 게스트 GPU 가속(미사용 시 WARP 소프트웨어 렌더)이다. MacSandbox에선
-  사용자 화면이 RDP(rdpgfx)라 이 플래그가 **QEMU 콘솔(부팅 모니터)** 의 표시 장치만 바꾼다
-  (`ramfb`↔`virtio-gpu-pci`). 데스크톱은 어느 쪽이든 GPU 가속이 없고 DWM이 소프트웨어로 합성한다.
-  → *사용자 체감 GPU 가속엔 영향 없음*.
+- **vGPU** — The original `.wsb` meaning is guest GPU acceleration (WARP software rendering when unused). In MacSandbox the
+  user's display is RDP (rdpgfx), so this flag only changes the display device of the **QEMU console (boot monitor)**
+  (`ramfb`↔`virtio-gpu-pci`). The desktop has no GPU acceleration either way and DWM composites in software.
+  → *No effect on the user's perceived GPU acceleration.*
 
-### ❌ 미지원 (known limitation)
+### ❌ Unsupported (known limitation)
 
-- **VideoInput(웹캠)** — 번들 libfreerdp가 RDPECAM(`[MS-RDPECAM]`) 채널을 빌드에서 끔
-  (`This build does not support [MS-RDPECAM]…`). 게다가 FreeRDP 업스트림 카메라 백엔드는 Linux `v4l`뿐이라
-  macOS(AVFoundation) 백엔드가 없다. 지원하려면 libfreerdp 리빌드 + macOS 카메라 백엔드 신규 작성이 필요하다.
-- **ProtectedClient** — 미파싱(요소 무시). Windows Sandbox의 AppContainer 격리는 Hyper-V 전용 개념이라
-  QEMU+RDP 모델에 대응물이 없다.
+- **VideoInput (webcam)** — The bundled libfreerdp disables the RDPECAM (`[MS-RDPECAM]`) channel in its build
+  (`This build does not support [MS-RDPECAM]…`). On top of that, the upstream FreeRDP camera backend is Linux `v4l` only, so
+  there is no macOS (AVFoundation) backend. Supporting it would require rebuilding libfreerdp + writing a new macOS camera backend.
+- **ProtectedClient** — Not parsed (the element is ignored). Windows Sandbox's AppContainer isolation is a Hyper-V-only concept, so
+  it has no counterpart in the QEMU+RDP model.
 
-## MacSandbox 고유 동작
+## MacSandbox-specific behavior
 
-- **기본값**은 Windows Sandbox 표준과 일치: 네트워킹·클립보드·오디오 **on**, 웹캠·프린터 **off**.
-- **값 파싱**(3-상태): `Enable|true|1|on|yes` → 켜짐, `Disable|false|0|off|no` → 꺼짐,
-  `Default`/미인식/미지정 → 기본값 유지. `ReadOnly`는 `true`만 읽기전용.
-- **메모리/CPU 클램프**는 `.wsb`에 명시한 값보다 항상 우선한다(호스트 보호).
-- **자격증명**: 사용자 계정/암호는 `.wsb`로 설정하지 않는다 — 내부 고정 자격증명으로 자동 로그온한다.
-- **창 크기/해상도**: `.wsb`로 설정 불가(공식과 동일). MacSandbox는 창 크기에 맞춰 동적 리사이즈한다.
+- **Defaults** match the Windows Sandbox standard: networking, clipboard, and audio **on**; webcam and printer **off**.
+- **Value parsing** (3-state): `Enable|true|1|on|yes` → on, `Disable|false|0|off|no` → off,
+  `Default`/unrecognized/unspecified → keep the default. For `ReadOnly`, only `true` is read-only.
+- **Memory/CPU clamps** always take precedence over the values specified in `.wsb` (host protection).
+- **Credentials**: The user account/password are not set via `.wsb` — it auto-logs on with internal fixed credentials.
+- **Window size/resolution**: Cannot be set via `.wsb` (same as official). MacSandbox resizes dynamically to fit the window.
 
-## 예시 `.wsb`
+## Example `.wsb`
 
 ```xml
 <Configuration>
-  <MemoryInMB>8192</MemoryInMB>      <!-- [4GB, 호스트-4GB]로 클램프 -->
-  <Networking>Enable</Networking>    <!-- Disable 시 외부 차단 -->
+  <MemoryInMB>8192</MemoryInMB>      <!-- Clamped to [4GB, host-4GB] -->
+  <Networking>Enable</Networking>    <!-- Blocks external access when Disable -->
   <LogonCommand>
     <Command>cmd /c echo hello &gt; C:\Users\Public\hello.txt</Command>
   </LogonCommand>
-  <ClipboardRedirection>Enable</ClipboardRedirection>   <!-- ✅ Disable 시 클립보드 차단 -->
-  <AudioInput>Enable</AudioInput>                        <!-- ✅ 마이크 게이팅(스피커는 상시) -->
-  <PrinterRedirection>Enable</PrinterRedirection>        <!-- ✅ 호스트 프린터 → 게스트 -->
-  <MappedFolders>                                        <!-- ✅ SandboxFolder 없으면 바탕화면\Shared 자동 마운트 -->
+  <ClipboardRedirection>Enable</ClipboardRedirection>   <!-- ✅ Blocks the clipboard when Disable -->
+  <AudioInput>Enable</AudioInput>                        <!-- ✅ Gates the microphone (speaker always on) -->
+  <PrinterRedirection>Enable</PrinterRedirection>        <!-- ✅ Host printer → guest -->
+  <MappedFolders>                                        <!-- ✅ Auto-mounts to desktop\Shared when SandboxFolder is omitted -->
     <MappedFolder><HostFolder>~/Shared</HostFolder><ReadOnly>false</ReadOnly></MappedFolder>
-    <!-- SandboxFolder 지정 시 그 경로에 마운트: -->
+    <!-- Mounts at the given path when SandboxFolder is specified: -->
     <MappedFolder><HostFolder>~/Docs</HostFolder><SandboxFolder>C:\Users\WDAGUtilityAccount\Docs</SandboxFolder></MappedFolder>
   </MappedFolders>
-  <!-- 아래는 파싱되지만 미지원: -->
-  <VideoInput>Disable</VideoInput>                       <!-- ❌ 미지원(RDPECAM 부재) -->
-  <ProtectedClient>Disable</ProtectedClient>             <!-- ❌ 미파싱 -->
+  <!-- The following are parsed but unsupported: -->
+  <VideoInput>Disable</VideoInput>                       <!-- ❌ Unsupported (no RDPECAM) -->
+  <ProtectedClient>Disable</ProtectedClient>             <!-- ❌ Not parsed -->
 </Configuration>
 ```
 
-## 출처
+## Sources
 
-- 공식 스키마: [Use and configure Windows Sandbox — Microsoft Learn](https://learn.microsoft.com/en-us/windows/security/application-security/application-isolation/windows-sandbox/windows-sandbox-configure-using-wsb-file) (2026-03-29 기준)
-- 구현: 위 본문에 링크된 소스 파일들.
+- Official schema: [Use and configure Windows Sandbox — Microsoft Learn](https://learn.microsoft.com/en-us/windows/security/application-security/application-isolation/windows-sandbox/windows-sandbox-configure-using-wsb-file) (as of 2026-03-29)
+- Implementation: the source files linked in the body above.
