@@ -216,6 +216,15 @@ final class SandboxRunner: ObservableObject {
         return lines.joined(separator: "\r\n") + "\r\n"
     }
 
+    /// 로그온 cmd를 숨은 콘솔(SW_HIDE)에서 실행하는 VBScript 런처.
+    /// 레지스트리 Run 항목이 wscript로 이 vbs를 띄우면, 자신과 같은 드라이브의
+    /// macsandbox-logon.cmd를 창 없이(0) 실행하고 끝날 때까지 대기(True)한다 → Windows Sandbox처럼 콘솔이 안 보임.
+    nonisolated private static let logonVBS =
+        "Dim p, d\r\n" +
+        "p = WScript.ScriptFullName\r\n" +
+        "d = Left(p, InStrRev(p, \"\\\"))\r\n" +
+        "CreateObject(\"WScript.Shell\").Run \"cmd /c \"\"\" & d & \"macsandbox-logon.cmd\"\"\", 0, True\r\n"
+
     /// 로그온 스크립트를 담은 작은 FAT16 설정 디스크 생성 (베이스라인 로그온 에이전트가 읽음).
     /// 셸 도구(hdiutil/newfs/diskutil)만 쓰는 순수 함수 — 백그라운드 태스크에서 호출된다.
     nonisolated private static func makeConfigDisk(script: String, at path: String) throws {
@@ -243,6 +252,9 @@ final class SandboxRunner: ObservableObject {
         }
         try script.write(toFile: (mp as NSString).appendingPathComponent("macsandbox-logon.cmd"),
                          atomically: true, encoding: .utf8)
+        // 숨은 콘솔 런처 — 레지스트리 Run 항목이 이 vbs를 wscript로 띄워 .cmd를 창 없이 실행한다.
+        try logonVBS.write(toFile: (mp as NSString).appendingPathComponent("macsandbox-logon.vbs"),
+                           atomically: true, encoding: .utf8)
         _ = try? shellCapture("/usr/sbin/diskutil", ["unmount", dev])
     }
 

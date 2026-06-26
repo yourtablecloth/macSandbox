@@ -134,8 +134,8 @@ final class UnattendBuilder {
                         </SynchronousCommand>
                         <SynchronousCommand wcm:action="add">
                             <Order>12</Order>
-                            <CommandLine>reg add "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run" /v MacSandboxLogon /t REG_SZ /d "cmd /c for %d in (D E F G H I) do if exist %d:\\macsandbox-logon.cmd call %d:\\macsandbox-logon.cmd" /f</CommandLine>
-                            <Description>logon agent: runs sandbox LogonCommand from config disk</Description>
+                            <CommandLine>reg add "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run" /v MacSandboxLogon /t REG_SZ /d "cmd /c for %d in (D E F G H I) do if exist %d:\\macsandbox-logon.vbs start wscript //B %d:\\macsandbox-logon.vbs" /f</CommandLine>
+                            <Description>logon agent: runs sandbox LogonCommand from config disk via a hidden VBScript launcher (no visible console window, like Windows Sandbox). 'start' detaches wscript so this cmd exits immediately; wscript runs the .cmd with window style 0 (SW_HIDE).</Description>
                         </SynchronousCommand>
                         <SynchronousCommand wcm:action="add">
                             <Order>13</Order>
