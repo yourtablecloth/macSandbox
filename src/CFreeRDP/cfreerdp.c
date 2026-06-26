@@ -19,7 +19,7 @@
 #include <stdio.h>
 
 const char *cfreerdp_link_test(void) {
-    // freerdp 인스턴스 생성/해제 — 심볼이 실제로 링크돼야 성공한다.
+    // Create/free a freerdp instance — succeeds only if the symbols are actually linked.
     freerdp *instance = freerdp_new();
     static char buf[64];
     if (instance) {

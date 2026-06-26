@@ -19,8 +19,8 @@
 #include <string.h>
 #include <unistd.h>
 
-// 윈도우→Mac 파일 클립보드 close-loop 검증.
-// PowerShell로 게스트에 파일 생성 + Set-Clipboard, 호스트로 전송돼 오는지 확인.
+// Windows→Mac file clipboard close-loop check.
+// Use PowerShell to create a file on the guest + Set-Clipboard, and verify it is transferred to the host.
 
 static char g_path[1300];
 static int g_got;
@@ -30,7 +30,7 @@ static void on_files(void *ud, const char *const *paths, int count) {
     if (count > 0 && paths[0]) { strncpy(g_path, paths[0], sizeof(g_path) - 1); g_got = 1; }
 }
 
-// macOS US 키보드: 문자 → (keyCode, shift 필요?)
+// macOS US keyboard: character → (keyCode, shift needed?)
 static int mac_key(char c, int *shift) {
     *shift = 0;
     switch (c) {
@@ -82,7 +82,7 @@ static void type_str(RDPEngine *e, const char *s) {
     }
 }
 
-// ── Mac→윈도우 파일(local→remote) round-trip 검증 ──
+// ── Mac→Windows file (local→remote) round-trip check ──
 static char g_rt[512];
 static int g_rt_got;
 static void rt_on_text(void *ud, const char *utf8) {
@@ -92,7 +92,7 @@ static void rt_on_text(void *ud, const char *utf8) {
 
 int cfreerdp_filetest2(const char *host, int port) {
     g_rt_got = 0; g_rt[0] = 0;
-    // 호스트 소스 파일 생성(개행 없이)
+    // create the host source file (no newline)
     const char *src = "/tmp/macwin-src.txt";
     FILE *sf = fopen(src, "wb");
     if (sf) { fputs("macToWin123", sf); fclose(sf); }
@@ -101,27 +101,27 @@ int cfreerdp_filetest2(const char *host, int port) {
                                      NULL, NULL, rt_on_text, NULL);
     if (!e) return 1;
     rdp_engine_start(e);
-    fprintf(stderr, "[filetest2] 연결 + 데스크톱 대기...\n");
+    fprintf(stderr, "[filetest2] connecting + waiting for desktop...\n");
     sleep(18);
 
-    // 데스크톱 포커스(빈 영역)
+    // desktop focus (empty area)
     rdp_engine_send_pointer(e, RDP_PTR_MOVE, 640, 360); usleep(100000);
     rdp_engine_send_pointer(e, RDP_PTR_DOWN | RDP_PTR_BUTTON1, 640, 360); usleep(80000);
     rdp_engine_send_pointer(e, RDP_PTR_BUTTON1, 640, 360); usleep(300000);
 
-    // 호스트 클립보드에 파일 공유(local→remote 광고)
+    // share the file via the host clipboard (local→remote advertisement)
     const char *paths[1] = { src };
     rdp_engine_set_local_clipboard_files(e, paths, 1);
     sleep(2);
 
-    // 데스크톱에 Ctrl+V → 파일 붙여넣기(FileContents로 materialize)
+    // Ctrl+V on the desktop → paste the file (materialize via FileContents)
     rdp_engine_send_mac_key(e, MAC_CTRL, 1); usleep(50000);
     { int sh; int v = mac_key('v', &sh); rdp_engine_send_mac_key(e, (uint16_t)v, 1); usleep(40000);
       rdp_engine_send_mac_key(e, (uint16_t)v, 0); usleep(40000); }
     rdp_engine_send_mac_key(e, MAC_CTRL, 0);
-    sleep(4); // materialize 대기
+    sleep(4); // wait for materialize
 
-    // 붙여진 파일을 읽어 텍스트 클립보드로(→ Windows→Mac으로 회수)
+    // read the pasted file into the text clipboard (→ retrieved Windows→Mac)
     rdp_engine_send_mac_key(e, MAC_CMD, 1); usleep(60000);
     { int sh; int r = mac_key('r', &sh); rdp_engine_send_mac_key(e, (uint16_t)r, 1); usleep(40000);
       rdp_engine_send_mac_key(e, (uint16_t)r, 0); usleep(40000); }
@@ -133,13 +133,13 @@ int cfreerdp_filetest2(const char *host, int port) {
     sleep(9);
 
     int ok = (strstr(g_rt, "macToWin123") != NULL);
-    fprintf(stderr, "[filetest2] Mac→윈도우 파일 round-trip: 회수='%s' (기대 'macToWin123') %s\n",
+    fprintf(stderr, "[filetest2] Mac→Windows file round-trip: retrieved='%s' (expected 'macToWin123') %s\n",
             g_rt, ok ? "OK" : "FAIL");
     rdp_engine_free(e);
     return ok ? 0 : 1;
 }
 
-// ── 동적 해상도(c) 검증: 리사이즈 요청 후 프레임 크기 변화 확인 ──
+// ── dynamic resolution (c) check: verify the frame size changes after a resize request ──
 static int g_rw, g_rh;
 static void res_on_frame(void *ud, const uint8_t *bgrx, int w, int h, int stride) {
     (void)ud; (void)bgrx; (void)stride; g_rw = w; g_rh = h;
@@ -150,23 +150,23 @@ int cfreerdp_restest(const char *host, int port) {
                                      res_on_frame, NULL, NULL, NULL);
     if (!e) return 1;
     rdp_engine_start(e);
-    fprintf(stderr, "[restest] 연결 + 데스크톱 대기...\n");
+    fprintf(stderr, "[restest] connecting + waiting for desktop...\n");
     sleep(16);
     int bw = g_rw, bh = g_rh;
-    fprintf(stderr, "[restest] 초기 프레임 %dx%d → 1280x720 요청\n", bw, bh);
+    fprintf(stderr, "[restest] initial frame %dx%d → requesting 1280x720\n", bw, bh);
     rdp_engine_request_resize(e, 1280, 720, 100);
     sleep(6);
     int aw = g_rw, ah = g_rh;
     int ok = (aw == 1280 && ah == 720);
-    fprintf(stderr, "[restest] 리사이즈 후 프레임 %dx%d (기대 1280x720) %s\n", aw, ah, ok ? "OK" : "FAIL");
+    fprintf(stderr, "[restest] frame after resize %dx%d (expected 1280x720) %s\n", aw, ah, ok ? "OK" : "FAIL");
     rdp_engine_free(e);
     return ok ? 0 : 1;
 }
 
-// ── Mac→윈도우 폴더(하위폴더 포함) round-trip 검증 (b) ──
+// ── Mac→Windows folder (including subfolders) round-trip check (b) ──
 int cfreerdp_filetest3(const char *host, int port) {
     g_rt_got = 0; g_rt[0] = 0;
-    // 호스트에 폴더 구조 생성: /tmp/macwin-folder/sub/b.txt
+    // create a folder structure on the host: /tmp/macwin-folder/sub/b.txt
     system("rm -rf /tmp/macwin-folder && mkdir -p /tmp/macwin-folder/sub");
     FILE *a = fopen("/tmp/macwin-folder/a.txt", "wb"); if (a) { fputs("topfile", a); fclose(a); }
     FILE *b = fopen("/tmp/macwin-folder/sub/b.txt", "wb"); if (b) { fputs("folderContent99", b); fclose(b); }
@@ -175,25 +175,25 @@ int cfreerdp_filetest3(const char *host, int port) {
                                      NULL, NULL, rt_on_text, NULL);
     if (!e) return 1;
     rdp_engine_start(e);
-    fprintf(stderr, "[filetest3] 연결 + 데스크톱 대기...\n");
+    fprintf(stderr, "[filetest3] connecting + waiting for desktop...\n");
     sleep(18);
 
     rdp_engine_send_pointer(e, RDP_PTR_MOVE, 640, 360); usleep(100000);
     rdp_engine_send_pointer(e, RDP_PTR_DOWN | RDP_PTR_BUTTON1, 640, 360); usleep(80000);
     rdp_engine_send_pointer(e, RDP_PTR_BUTTON1, 640, 360); usleep(300000);
 
-    const char *paths[1] = { "/tmp/macwin-folder" }; // 폴더 통째로 공유(재귀 전개)
+    const char *paths[1] = { "/tmp/macwin-folder" }; // share the whole folder (recursively expanded)
     rdp_engine_set_local_clipboard_files(e, paths, 1);
     sleep(2);
 
-    // 데스크톱에 Ctrl+V → 폴더+하위파일 materialize
+    // Ctrl+V on the desktop → materialize the folder + nested files
     rdp_engine_send_mac_key(e, MAC_CTRL, 1); usleep(50000);
     { int sh; int v = mac_key('v', &sh); rdp_engine_send_mac_key(e, (uint16_t)v, 1); usleep(40000);
       rdp_engine_send_mac_key(e, (uint16_t)v, 0); usleep(40000); }
     rdp_engine_send_mac_key(e, MAC_CTRL, 0);
     sleep(5);
 
-    // 하위폴더 파일 내용 회수
+    // retrieve the contents of the subfolder file
     rdp_engine_send_mac_key(e, MAC_CMD, 1); usleep(60000);
     { int sh; int r = mac_key('r', &sh); rdp_engine_send_mac_key(e, (uint16_t)r, 1); usleep(40000);
       rdp_engine_send_mac_key(e, (uint16_t)r, 0); usleep(40000); }
@@ -205,7 +205,7 @@ int cfreerdp_filetest3(const char *host, int port) {
     sleep(9);
 
     int ok = (strstr(g_rt, "folderContent99") != NULL);
-    fprintf(stderr, "[filetest3] 폴더(하위포함) round-trip: 회수='%s' (기대 'folderContent99') %s\n",
+    fprintf(stderr, "[filetest3] folder (subfolders included) round-trip: retrieved='%s' (expected 'folderContent99') %s\n",
             g_rt, ok ? "OK" : "FAIL");
     rdp_engine_free(e);
     return ok ? 0 : 1;
@@ -218,15 +218,15 @@ int cfreerdp_filetest(const char *host, int port) {
     if (!e) return 1;
     rdp_engine_set_files_callback(e, on_files);
     rdp_engine_start(e);
-    fprintf(stderr, "[filetest] 연결 + 데스크톱 대기...\n");
+    fprintf(stderr, "[filetest] connecting + waiting for desktop...\n");
     sleep(18);
 
-    // 데스크톱 포커스
+    // desktop focus
     rdp_engine_send_pointer(e, RDP_PTR_MOVE, 700, 450); usleep(100000);
     rdp_engine_send_pointer(e, RDP_PTR_DOWN | RDP_PTR_BUTTON1, 700, 450); usleep(80000);
     rdp_engine_send_pointer(e, RDP_PTR_BUTTON1, 700, 450); usleep(300000);
 
-    // Win+R → PowerShell로 파일 생성 + Set-Clipboard → Enter
+    // Win+R → create a file with PowerShell + Set-Clipboard → Enter
     rdp_engine_send_mac_key(e, MAC_CMD, 1); usleep(60000);
     { int sh; int r = mac_key('r', &sh); rdp_engine_send_mac_key(e, (uint16_t)r, 1); usleep(40000);
       rdp_engine_send_mac_key(e, (uint16_t)r, 0); usleep(40000); }
@@ -236,7 +236,7 @@ int cfreerdp_filetest(const char *host, int port) {
     usleep(300000);
     rdp_engine_send_mac_key(e, MAC_RET, 1); usleep(45000);
     rdp_engine_send_mac_key(e, MAC_RET, 0);
-    sleep(11); // PowerShell 콜드스타트 + 파일 생성 + 클립보드 + 전송 대기
+    sleep(11); // wait for PowerShell cold start + file creation + clipboard + transfer
 
     int ok = 0;
     char content[256] = { 0 };
@@ -245,7 +245,7 @@ int cfreerdp_filetest(const char *host, int port) {
         if (f) { size_t n = fread(content, 1, sizeof(content) - 1, f); content[n] = 0; fclose(f); }
         ok = (strstr(content, "msbxfilecontent") != NULL);
     }
-    fprintf(stderr, "[filetest] 윈도우→Mac 파일: 수신=%d 경로='%s' 내용='%.40s' %s\n",
+    fprintf(stderr, "[filetest] Windows→Mac file: received=%d path='%s' content='%.40s' %s\n",
             g_got, g_path, content, ok ? "OK" : "FAIL");
     rdp_engine_free(e);
     return ok ? 0 : 1;

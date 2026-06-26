@@ -19,7 +19,7 @@
 #include <string.h>
 #include <unistd.h>
 
-// remote→local 텍스트 클립보드 close-loop 검증. (이 파일은 plain C — winpr/AppKit 미포함)
+// remote→local text clipboard close-loop check. (This file is plain C — no winpr/AppKit included.)
 
 static char g_remote[512];
 static int g_got;
@@ -48,7 +48,7 @@ static void save_frame(const char *path) {
     fclose(f);
 }
 
-// macOS US 키보드 keyCode (소문자 letters + space)
+// macOS US keyboard keyCode (lowercase letters + space)
 static int mac_keycode(char c) {
     switch (c) {
     case 'a': return 0;  case 's': return 1;  case 'd': return 2;  case 'f': return 3;
@@ -69,7 +69,7 @@ static void tap(RDPEngine *e, int code) {
 static void type_str(RDPEngine *e, const char *s) {
     for (; *s; s++) { int k = mac_keycode(*s); if (k >= 0) tap(e, k); }
 }
-// 모디파이어+키 콤보 (예: Ctrl+C)
+// modifier+key combo (e.g. Ctrl+C)
 static void combo(RDPEngine *e, int mod, int key) {
     rdp_engine_send_mac_key(e, (uint16_t)mod, 1); usleep(50000);
     tap(e, key);
@@ -86,10 +86,10 @@ int cfreerdp_cliptest(const char *host, int port) {
                                      clip_on_frame, NULL, clip_on_text, NULL);
     if (!e) return 1;
     rdp_engine_start(e);
-    fprintf(stderr, "[cliptest] 연결 + 데스크톱 대기...\n");
+    fprintf(stderr, "[cliptest] connecting + waiting for desktop...\n");
     sleep(18);
 
-    // 데스크톱 클릭으로 포커스 확보
+    // click the desktop to grab focus
     rdp_engine_send_pointer(e, RDP_PTR_MOVE, 700, 450); usleep(100000);
     rdp_engine_send_pointer(e, RDP_PTR_DOWN | RDP_PTR_BUTTON1, 700, 450); usleep(80000);
     rdp_engine_send_pointer(e, RDP_PTR_BUTTON1, 700, 450); usleep(300000);
@@ -101,7 +101,7 @@ int cfreerdp_cliptest(const char *host, int port) {
     tap(e, MAC_RET);
     sleep(4);
 
-    // 메모장에 'msbxrt' 입력 → Ctrl+A → Ctrl+C
+    // type 'msbxrt' into Notepad → Ctrl+A → Ctrl+C
     type_str(e, "msbxrt");
     usleep(400000);
     combo(e, MAC_CTRL, 0 /* a */);
@@ -110,7 +110,7 @@ int cfreerdp_cliptest(const char *host, int port) {
 
     save_frame("/tmp/cliptest-frame.ppm");
     int ok = (strstr(g_remote, "msbxrt") != NULL);
-    fprintf(stderr, "[cliptest] remote→local 수신: '%s' (기대 'msbxrt') %s\n",
+    fprintf(stderr, "[cliptest] remote→local received: '%s' (expected 'msbxrt') %s\n",
             g_remote, ok ? "OK" : "FAIL");
     rdp_engine_free(e);
     return ok ? 0 : 1;

@@ -13,8 +13,8 @@
 
 #include "rdp_engine.h"
 
-// freerdp 3.x 헤더는 구조체에 deprecated 멤버(pVerifyCertificate 등)를 선언해 include만 해도
-// -Wdeprecated-declarations 경고가 난다. 헤더 노이즈만 억제하고(내 코드 경고는 유지) pop한다.
+// freerdp 3.x headers declare deprecated members (pVerifyCertificate etc.) in structs, so just including
+// them triggers -Wdeprecated-declarations warnings. Suppress only the header noise (keep our own code warnings) and pop.
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
 #include <freerdp/freerdp.h>
@@ -48,29 +48,29 @@
 #include <sys/stat.h>
 #include <dirent.h>
 
-// local→remote(Mac→윈도우) 파일 클립보드용으로 광고하는 포맷 ID(LONG_FORMAT_NAMES라 서버는 이름으로 매핑).
+// Format IDs advertised for the local→remote (Mac→Windows) file clipboard (LONG_FORMAT_NAMES, so the server maps by name).
 #define FMT_FILEDESCRIPTORW 0xC100
 #define FMT_FILECONTENTS    0xC101
 #define WIN_ATTR_DIRECTORY  0x10
 #define WIN_ATTR_NORMAL     0x80
 
 #define FT_MAX_FILES 1024
-#define FT_CHUNK 1048576  // 1MB 청크
+#define FT_CHUNK 1048576  // 1MB chunk
 
-// 원격→로컬 파일 전송 상태(윈도우→Mac). 하위폴더는 중첩 경로로 생성.
+// Remote→local file transfer state (Windows→Mac). Subfolders are created as nested paths.
 typedef struct {
-    char path[1300];   // 임시 파일 경로(중첩 포함)
+    char path[1300];   // temp file path (nesting included)
     uint64_t size;
     uint64_t pos;
     FILE *fp;
     int isDir;
-    int topLevel;      // ftDir 바로 아래(붙여넣기 대상으로 보고)
+    int topLevel;      // directly under ftDir (reported as a paste target)
 } ftFile;
 
-// local→remote(Mac→윈도우) 공유 항목. 폴더는 재귀 전개되어 평면 목록이 된다.
+// A local→remote (Mac→Windows) shared item. Folders are recursively expanded into a flat list.
 typedef struct {
-    char rel[600];     // 게스트가 보는 상대경로('\' 구분, 예: "folder\\sub\\a.txt")
-    char local[1300];  // 실제 호스트 절대경로
+    char rel[600];     // relative path as the guest sees it ('\' separated, e.g. "folder\\sub\\a.txt")
+    char local[1300];  // actual host absolute path
     int isDir;
     uint64_t size;
 } localItem;
@@ -89,34 +89,34 @@ struct RDPEngine {
     volatile int stop;
     freerdp *instance;
 
-    CliprdrClientContext *clip;  // 클립보드 채널 컨텍스트(연결 시 채워짐)
+    CliprdrClientContext *clip;  // clipboard channel context (filled in on connect)
     pthread_mutex_t clipLock;
-    char *localText;             // 호스트→게스트 공유용 로컬 클립보드 텍스트(UTF8)
-    localItem localItems[FT_MAX_FILES]; // 호스트→게스트 공유 항목(폴더 재귀 전개)
+    char *localText;             // local clipboard text for host→guest sharing (UTF8)
+    localItem localItems[FT_MAX_FILES]; // host→guest shared items (folders recursively expanded)
     int localItemCount;
 
-    DispClientContext *disp;     // Display Control 채널(동적 해상도). 연결 시 채워짐
-    int reqW, reqH, reqScale;    // 대기 중 요청 해상도/DPI배율(채널 연결 전 요청 시 보관)
-    RdpgfxClientContext *gfx;    // Graphics Pipeline(RDPGFX) 채널. 연결 시 gdi에 연결
-    int featClipboard;           // 클립보드 리다이렉션 on/off(.wsb ClipboardRedirection)
-    int featMic;                 // 마이크 캡처 on/off(.wsb AudioInput). 스피커 재생은 상시.
-    int featPrinter;             // 프린터 리다이렉션 on/off(.wsb PrinterRedirection)
-    int featSound;               // 오디오 재생(rdpsnd) on/off — 기본 on(옵션으로 끔)
-    int kbdType, kbdSubtype, kbdLayout; // 클라이언트 키보드 식별(0 = FreeRDP 기본)
-    struct { char path[2048]; char name[256]; } mapped[16]; // 공유 폴더(.wsb MappedFolders)
+    DispClientContext *disp;     // Display Control channel (dynamic resolution). Filled in on connect
+    int reqW, reqH, reqScale;    // pending requested resolution/DPI scale (stored if requested before the channel connects)
+    RdpgfxClientContext *gfx;    // Graphics Pipeline (RDPGFX) channel. Connected to gdi on connect
+    int featClipboard;           // clipboard redirection on/off (.wsb ClipboardRedirection)
+    int featMic;                 // mic capture on/off (.wsb AudioInput). Speaker playback is always on.
+    int featPrinter;             // printer redirection on/off (.wsb PrinterRedirection)
+    int featSound;               // audio playback (rdpsnd) on/off — default on (turned off via option)
+    int kbdType, kbdSubtype, kbdLayout; // client keyboard identity (0 = FreeRDP default)
+    struct { char path[2048]; char name[256]; } mapped[16]; // shared folders (.wsb MappedFolders)
     int mappedCount;
 
-    UINT32 fileFormatId;         // 서버가 알린 "FileGroupDescriptorW" 포맷 ID(0=없음)
-    UINT32 pendingFormatId;      // 마지막 ClientFormatDataRequest의 포맷(응답 구분용)
-    char ftDir[1100];            // 받은 파일 임시 디렉토리
+    UINT32 fileFormatId;         // the "FileGroupDescriptorW" format ID announced by the server (0=none)
+    UINT32 pendingFormatId;      // the format of the last ClientFormatDataRequest (to distinguish responses)
+    char ftDir[1100];            // temp directory for received files
     ftFile ftFiles[FT_MAX_FILES];
     int ftCount;
-    int ftCur;                   // 현재 받는 파일 인덱스
-    UINT32 ftStream;             // streamId 카운터
+    int ftCur;                   // index of the file currently being received
+    UINT32 ftStream;             // streamId counter
     int ftActive;
 };
 
-// rdpContext를 첫 멤버로 두는 커스텀 컨텍스트. engine 포인터를 콜백에서 참조.
+// Custom context with rdpContext as the first member. References the engine pointer from callbacks.
 typedef struct {
     rdpContext _ctx;
     RDPEngine *engine;
@@ -136,13 +136,13 @@ static BOOL eng_end_paint(rdpContext *context) {
     return TRUE;
 }
 
-// 서버가 데스크톱 해상도를 바꾸면(동적 해상도 응답) gdi 버퍼를 재할당한다.
-// 이게 없으면 SendMonitorLayout으로 서버가 리사이즈해도 클라이언트 프레임이 옛 크기로 남는다.
+// When the server changes the desktop resolution (dynamic resolution response), reallocate the gdi buffer.
+// Without this, even if the server resizes via SendMonitorLayout, the client frame stays at the old size.
 static BOOL eng_desktop_resize(rdpContext *context) {
     UINT32 w = freerdp_settings_get_uint32(context->settings, FreeRDP_DesktopWidth);
     UINT32 h = freerdp_settings_get_uint32(context->settings, FreeRDP_DesktopHeight);
     if (!gdi_resize(context->gdi, w, h)) return FALSE;
-    // 리사이즈 직후 현재 프레임을 콜백(즉시 새 크기 반영)
+    // right after resizing, callback the current frame (reflect the new size immediately)
     engContext *c = (engContext *)context;
     RDPEngine *e = c->engine;
     rdpGdi *gdi = context->gdi;
@@ -156,25 +156,25 @@ static BOOL eng_post_connect(freerdp *instance) {
     instance->context->update->EndPaint = eng_end_paint;
     instance->context->update->DesktopResize = eng_desktop_resize;
     engContext *c = (engContext *)instance->context;
-    eng_status(c->engine, "연결됨 (렌더링)");
+    eng_status(c->engine, "Connected (rendering)");
     return TRUE;
 }
 
-// FreeRDP 3.x 채널 로드 훅. 코어가 적절한 시점에 호출하고, 이후 채널을 연결한다.
+// FreeRDP 3.x channel load hook. The core calls it at the appropriate time, then the channels are connected.
 static BOOL eng_load_channels(freerdp *instance) {
     rdpSettings *s = instance->context->settings;
-    // 클립보드 채널은 RedirectClipboard(=featClipboard, eng_new_instance에서 설정)일 때만 추가.
+    // The clipboard channel is added only when RedirectClipboard (= featClipboard, set in eng_new_instance) is on.
     if (freerdp_settings_get_bool(s, FreeRDP_RedirectClipboard)) {
         const char *clipArgs[] = { "cliprdr" };
         freerdp_client_add_static_channel(s, 1, clipArgs);
     }
-    // 오디오 재생(rdpsnd): load_addins의 자동 추가는 서브시스템 미지정이라 백엔드 자동 선택에
-    // 맡겨진다. CoreAudio(sys:mac)를 명시해 무음(fake) 백엔드로 빠지지 않게 한다.
+    // Audio playback (rdpsnd): load_addins' automatic addition leaves the backend to automatic selection
+    // since no subsystem is specified. Specify CoreAudio (sys:mac) so it doesn't fall back to a silent (fake) backend.
     if (freerdp_settings_get_bool(s, FreeRDP_AudioPlayback)) {
         const char *sndArgs[] = { "rdpsnd", "sys:mac" };
         freerdp_client_add_static_channel(s, 2, sndArgs);
     }
-    // 마이크(audin)도 AVFoundation(sys:mac) 서브시스템을 명시.
+    // Mic (audin) also specifies the AVFoundation (sys:mac) subsystem.
     if (freerdp_settings_get_bool(s, FreeRDP_AudioCapture)) {
         const char *micArgs[] = { "audin", "sys:mac" };
         freerdp_client_add_dynamic_channel(s, 2, micArgs);
@@ -197,14 +197,14 @@ static DWORD eng_verify_cert(freerdp *instance, const char *host, UINT16 port,
     return 1; // cert:ignore
 }
 
-#pragma mark - cliprdr (클립보드 채널)
+#pragma mark - cliprdr (clipboard channel)
 
 static void eng_send_caps(CliprdrClientContext *clip) {
     CLIPRDR_GENERAL_CAPABILITY_SET general = { 0 };
     general.capabilitySetType = CB_CAPSTYPE_GENERAL;
     general.capabilitySetLength = 12;
     general.version = CB_CAPS_VERSION_2;
-    // 파일 클립보드 지원 광고 → 서버가 파일 복사 시 FileGroupDescriptorW를 보냄.
+    // advertise file clipboard support → the server sends FileGroupDescriptorW when files are copied.
     general.generalFlags = CB_USE_LONG_FORMAT_NAMES | CB_STREAM_FILECLIP_ENABLED |
                            CB_FILECLIP_NO_FILE_PATHS | CB_HUGE_FILE_SUPPORT_ENABLED;
     CLIPRDR_CAPABILITIES caps = { 0 };
@@ -216,14 +216,14 @@ static void eng_send_caps(CliprdrClientContext *clip) {
 static UINT eng_server_monitor_ready(CliprdrClientContext *clip, const CLIPRDR_MONITOR_READY *ready) {
     (void)ready;
     eng_send_caps(clip);
-    CLIPRDR_FORMAT_LIST list = { 0 }; // 초기엔 빈 목록(로컬 클립보드 미공유)
+    CLIPRDR_FORMAT_LIST list = { 0 }; // initially an empty list (local clipboard not shared)
     if (clip->ClientFormatList) clip->ClientFormatList(clip, &list);
     return CHANNEL_RC_OK;
 }
 
-// ── 원격→로컬 파일 전송(윈도우→Mac) ──
+// ── remote→local file transfer (Windows→Mac) ──
 
-// 중첩 경로용 재귀 mkdir.
+// recursive mkdir for nested paths.
 static void mkdir_p(const char *path) {
     char tmp[1300];
     strncpy(tmp, path, sizeof(tmp) - 1); tmp[sizeof(tmp) - 1] = 0;
@@ -233,21 +233,21 @@ static void mkdir_p(const char *path) {
     mkdir(tmp, 0755);
 }
 
-// 전송 완료 → 최상위 항목(파일/폴더) 경로로 콜백(NSPasteboard에 올림).
+// transfer complete → callback with top-level item (file/folder) paths (placed on NSPasteboard).
 static void ft_finish(RDPEngine *e) {
     e->ftActive = 0;
     const char *paths[FT_MAX_FILES];
     int n = 0;
     for (int i = 0; i < e->ftCount; i++) {
         if (e->ftFiles[i].fp) { fclose(e->ftFiles[i].fp); e->ftFiles[i].fp = NULL; }
-        // 최상위 항목만 보고(폴더면 폴더째, 하위 파일은 폴더 안에 이미 생성됨)
+        // report only top-level items (folders whole; nested files are already created inside the folder)
         if (e->ftFiles[i].topLevel && e->ftFiles[i].path[0]) paths[n++] = e->ftFiles[i].path;
     }
-    fprintf(stderr, "[cliprdr] 파일/폴더 %d개 수신 완료(%s)\n", n, e->ftDir);
+    fprintf(stderr, "[cliprdr] received %d file(s)/folder(s) (%s)\n", n, e->ftDir);
     if (n > 0 && e->onRemoteFiles) e->onRemoteFiles(e->userdata, paths, n);
 }
 
-// 현재 파일의 다음 청크 요청. 끝나면 다음 파일로, 모두 끝나면 완료.
+// request the next chunk of the current file. When it ends, move to the next file; when all end, finish.
 static void ft_pump(RDPEngine *e) {
     while (e->ftCur < e->ftCount) {
         ftFile *f = &e->ftFiles[e->ftCur];
@@ -268,12 +268,12 @@ static void ft_pump(RDPEngine *e) {
         req.cbRequested = chunk;
         if (e->clip->ClientFileContentsRequest)
             e->clip->ClientFileContentsRequest(e->clip, &req);
-        return; // 응답 대기
+        return; // wait for response
     }
     ft_finish(e);
 }
 
-// FileGroupDescriptorW 파싱 → 임시폴더에 파일 생성 → 청크 요청 시작.
+// parse FileGroupDescriptorW → create files in the temp folder → start requesting chunks.
 static void ft_start(RDPEngine *e, const BYTE *data, UINT32 len) {
     if (len < 4) return;
     UINT32 count = *(const UINT32 *)data;
@@ -290,8 +290,8 @@ static void ft_start(RDPEngine *e, const BYTE *data, UINT32 len) {
         memset(f, 0, sizeof(*f));
         char *name = ConvertWCharNToUtf8Alloc(fds[i].cFileName, 260, NULL);
         if (!name || !name[0]) { free(name); name = strdup("file"); }
-        for (char *p = name; *p; p++) if (*p == '\\') *p = '/';  // 게스트 '\' → posix '/'
-        f->topLevel = (strchr(name, '/') == NULL);                // 최상위 항목 여부
+        for (char *p = name; *p; p++) if (*p == '\\') *p = '/';  // guest '\' → posix '/'
+        f->topLevel = (strchr(name, '/') == NULL);                // whether it is a top-level item
         int isDir = (fds[i].dwFlags & FD_ATTRIBUTES) &&
                     (fds[i].dwFileAttributes & WIN_ATTR_DIRECTORY);
         f->isDir = isDir;
@@ -300,7 +300,7 @@ static void ft_start(RDPEngine *e, const BYTE *data, UINT32 len) {
         if (isDir) {
             mkdir_p(f->path);
         } else {
-            // 부모 디렉토리 생성 후 파일 열기(중첩 경로 지원)
+            // create the parent directory then open the file (supports nested paths)
             char parent[1300];
             strncpy(parent, f->path, sizeof(parent) - 1); parent[sizeof(parent) - 1] = 0;
             char *slash = strrchr(parent, '/');
@@ -310,11 +310,11 @@ static void ft_start(RDPEngine *e, const BYTE *data, UINT32 len) {
         free(name);
         e->ftCount++;
     }
-    fprintf(stderr, "[cliprdr] 항목 %d개 수신 시작 → %s\n", e->ftCount, e->ftDir);
+    fprintf(stderr, "[cliprdr] starting to receive %d item(s) → %s\n", e->ftCount, e->ftDir);
     ft_pump(e);
 }
 
-// 파일 청크 데이터 도착 → 임시파일에 기록 후 다음 청크.
+// file chunk data arrives → write to the temp file then the next chunk.
 static UINT eng_server_file_contents_response(CliprdrClientContext *clip,
                                               const CLIPRDR_FILE_CONTENTS_RESPONSE *resp) {
     RDPEngine *e = (RDPEngine *)clip->custom;
@@ -331,9 +331,9 @@ static UINT eng_server_file_contents_response(CliprdrClientContext *clip,
     return CHANNEL_RC_OK;
 }
 
-// ── 포맷 목록/데이터 응답 ──
+// ── format list/data response ──
 
-// 원격 클립보드 변경 시 포맷 목록 도착. 파일이 있으면 파일 우선, 없으면 텍스트를 요청.
+// When the remote clipboard changes, the format list arrives. If there are files, files first; otherwise request text.
 static UINT eng_server_format_list(CliprdrClientContext *clip, const CLIPRDR_FORMAT_LIST *list) {
     RDPEngine *e = (RDPEngine *)clip->custom;
     int hasText = 0;
@@ -367,7 +367,7 @@ static UINT eng_server_format_list(CliprdrClientContext *clip, const CLIPRDR_FOR
     return CHANNEL_RC_OK;
 }
 
-// 데이터 응답: 파일 디스크립터(→파일 전송 시작) 또는 텍스트(→NSPasteboard).
+// data response: file descriptor (→start file transfer) or text (→NSPasteboard).
 static UINT eng_server_format_data_response(CliprdrClientContext *clip,
                                             const CLIPRDR_FORMAT_DATA_RESPONSE *resp) {
     RDPEngine *e = (RDPEngine *)clip->custom;
@@ -378,7 +378,7 @@ static UINT eng_server_format_data_response(CliprdrClientContext *clip,
         ft_start(e, resp->requestedFormatData, resp->common.dataLen);
         return CHANNEL_RC_OK;
     }
-    if (resp->common.dataLen >= 2) { // 텍스트
+    if (resp->common.dataLen >= 2) { // text
         size_t wlen = resp->common.dataLen / sizeof(WCHAR);
         char *utf8 = ConvertWCharNToUtf8Alloc((const WCHAR *)resp->requestedFormatData, wlen, NULL);
         if (utf8) {
@@ -394,7 +394,7 @@ static const char *base_name(const char *p) {
     return s ? s + 1 : p;
 }
 
-// 로컬 항목들로 FILEGROUPDESCRIPTORW(count + FILEDESCRIPTORW[]) 빌드 → 응답(폴더/중첩 포함).
+// build a FILEGROUPDESCRIPTORW (count + FILEDESCRIPTORW[]) from the local items → respond (folders/nesting included).
 static void eng_respond_file_descriptor(RDPEngine *e, CliprdrClientContext *clip) {
     pthread_mutex_lock(&e->clipLock);
     int n = e->localItemCount;
@@ -415,7 +415,7 @@ static void eng_respond_file_descriptor(RDPEngine *e, CliprdrClientContext *clip
                 fds[i].nFileSizeHigh = (UINT32)(it->size >> 32);
             }
             size_t wl = 0;
-            WCHAR *w = ConvertUtf8ToWCharAlloc(it->rel, &wl); // '\' 구분 상대경로
+            WCHAR *w = ConvertUtf8ToWCharAlloc(it->rel, &wl); // '\' separated relative path
             if (w) { for (size_t k = 0; k < wl && k < 259; k++) fds[i].cFileName[k] = w[k]; free(w); }
         }
     }
@@ -430,7 +430,7 @@ static void eng_respond_file_descriptor(RDPEngine *e, CliprdrClientContext *clip
     free(buf);
 }
 
-// 게스트가 우리(로컬) 클립보드 데이터를 요청(local→remote) → 파일 디스크립터 또는 텍스트로 응답.
+// the guest requests our (local) clipboard data (local→remote) → respond with file descriptor or text.
 static UINT eng_server_format_data_request(CliprdrClientContext *clip,
                                            const CLIPRDR_FORMAT_DATA_REQUEST *req) {
     RDPEngine *e = (RDPEngine *)clip->custom;
@@ -443,7 +443,7 @@ static UINT eng_server_format_data_request(CliprdrClientContext *clip,
     size_t wlen = 0;
     pthread_mutex_lock(&e->clipLock);
     if (req->requestedFormatId == CF_UNICODETEXT && e->localText) {
-        w = ConvertUtf8ToWCharAlloc(e->localText, &wlen); // null 종료 포함
+        w = ConvertUtf8ToWCharAlloc(e->localText, &wlen); // null terminator included
     }
     pthread_mutex_unlock(&e->clipLock);
 
@@ -461,7 +461,7 @@ static UINT eng_server_format_data_request(CliprdrClientContext *clip,
     return CHANNEL_RC_OK;
 }
 
-// 게스트가 로컬 파일의 크기/바이트 범위를 요청(local→remote) → 로컬 파일에서 읽어 응답.
+// the guest requests a local file's size/byte range (local→remote) → read from the local file and respond.
 static UINT eng_server_file_contents_request(CliprdrClientContext *clip,
                                              const CLIPRDR_FILE_CONTENTS_REQUEST *req) {
     RDPEngine *e = (RDPEngine *)clip->custom;
@@ -478,7 +478,7 @@ static UINT eng_server_file_contents_request(CliprdrClientContext *clip,
     resp.common.msgType = CB_FILECONTENTS_RESPONSE;
     resp.streamId = req->streamId;
 
-    if (!path[0] || isDir) { // 폴더는 콘텐츠 없음(게스트가 디스크립터로 폴더 생성)
+    if (!path[0] || isDir) { // folders have no contents (the guest creates the folder from the descriptor)
         resp.common.msgFlags = CB_RESPONSE_FAIL;
         if (clip->ClientFileContentsResponse) clip->ClientFileContentsResponse(clip, &resp);
         return CHANNEL_RC_OK;
@@ -489,7 +489,7 @@ static UINT eng_server_file_contents_request(CliprdrClientContext *clip,
         uint64_t size = (stat(path, &st) == 0) ? (uint64_t)st.st_size : 0;
         resp.common.msgFlags = CB_RESPONSE_OK;
         resp.cbRequested = sizeof(uint64_t);
-        resp.requestedData = (const BYTE *)&size; // 호출 내에서 직렬화되므로 스택 유효
+        resp.requestedData = (const BYTE *)&size; // serialized within the call, so the stack value is valid
         if (clip->ClientFileContentsResponse) clip->ClientFileContentsResponse(clip, &resp);
     } else { // FILECONTENTS_RANGE
         FILE *f = fopen(path, "rb");
@@ -508,22 +508,22 @@ static UINT eng_server_file_contents_request(CliprdrClientContext *clip,
     return CHANNEL_RC_OK;
 }
 
-// 동적 해상도: 보관된 reqW/reqH(픽셀) + reqScale(DPI%)로 모니터 레이아웃을 전송.
+// Dynamic resolution: send the monitor layout using the stored reqW/reqH (pixels) + reqScale (DPI%).
 static void eng_send_resize(RDPEngine *e) {
     if (!e->disp || !e->disp->SendMonitorLayout) return;
     int w = e->reqW, h = e->reqH, scale = e->reqScale;
     if (w <= 0 || h <= 0) return;
-    if (w < 200) w = 200; if (w > 8192) w = 8192;   // RDP 제약 + 짝수
+    if (w < 200) w = 200; if (w > 8192) w = 8192;   // RDP constraints + even
     if (h < 200) h = 200; if (h > 8192) h = 8192;
     w &= ~1; h &= ~1;
-    if (scale < 100) scale = 100; if (scale > 500) scale = 500; // DesktopScaleFactor 범위
+    if (scale < 100) scale = 100; if (scale > 500) scale = 500; // DesktopScaleFactor range
     DISPLAY_CONTROL_MONITOR_LAYOUT layout = { 0 };
     layout.Flags = DISPLAY_CONTROL_MONITOR_PRIMARY;
     layout.Width = (UINT32)w;
     layout.Height = (UINT32)h;
     layout.Orientation = 0;                       // landscape
-    layout.DesktopScaleFactor = (UINT32)scale;    // 게스트 DPI 배율(Retina면 200)
-    layout.DeviceScaleFactor = 100;               // {100,140,180}만 유효 → 100
+    layout.DesktopScaleFactor = (UINT32)scale;    // guest DPI scale (200 on Retina)
+    layout.DeviceScaleFactor = 100;               // only {100,140,180} are valid → 100
     e->disp->SendMonitorLayout(e->disp, 1, &layout);
 }
 
@@ -539,48 +539,48 @@ static void eng_channel_connected(void *context, const ChannelConnectedEventArgs
         clip->ServerFormatDataRequest = eng_server_format_data_request;
         clip->ServerFileContentsResponse = eng_server_file_contents_response;
         clip->ServerFileContentsRequest = eng_server_file_contents_request;
-        fprintf(stderr, "[cliprdr] 채널 연결됨\n");
+        fprintf(stderr, "[cliprdr] channel connected\n");
     } else if (strcmp(e->name, DISP_DVC_CHANNEL_NAME) == 0) {
         eng->disp = (DispClientContext *)e->pInterface;
         if (eng->reqW > 0 && eng->reqH > 0) eng_send_resize(eng);
-        fprintf(stderr, "[disp] 채널 연결됨\n");
+        fprintf(stderr, "[disp] channel connected\n");
     } else if (strcmp(e->name, RDPGFX_DVC_CHANNEL_NAME) == 0) {
-        // Graphics Pipeline → gdi에 연결(서버 H.264/AVC444/progressive 인코딩 + 영역 갱신).
+        // Graphics Pipeline → connect to gdi (server H.264/AVC444/progressive encoding + region updates).
         eng->gfx = (RdpgfxClientContext *)e->pInterface;
         rdpGdi *gdi = ((rdpContext *)context)->gdi;
         if (gdi) gdi_graphics_pipeline_init(gdi, eng->gfx);
-        fprintf(stderr, "[rdpgfx] 채널 연결됨\n");
+        fprintf(stderr, "[rdpgfx] channel connected\n");
     } else if (strcmp(e->name, "rdpsnd") == 0 || strcmp(e->name, "audin") == 0 ||
                strcmp(e->name, "rdpdr") == 0) {
-        fprintf(stderr, "[%s] 채널 연결됨\n", e->name);  // 오디오/장치 채널 협상 진단용
+        fprintf(stderr, "[%s] channel connected\n", e->name);  // for diagnosing audio/device channel negotiation
     }
 }
 
-// 채널 해제 훅 — 그래픽 파이프라인 해제는 **반드시 여기서**(업스트림 클라이언트와 동일).
+// Channel disconnect hook — graphics pipeline teardown **must happen here** (same as the upstream client).
 //
-// eng_run 말미(disconnect 전)에 gdi_graphics_pipeline_uninit을 부르면, 아직 살아있는
-// drdynvc 채널 스레드가 progressive 디코더(타일 스레드풀)를 돌리는 동안 타일 메모리를
-// 해제해 UAF 크래시가 난다(progressive_rfx_decode_component, pc=0). disconnect가 채널을
-// 정지시키는 과정에서 이 핸들러를 호출하므로, 이 시점엔 해당 채널의 디코딩이 끝나 있다.
+// Calling gdi_graphics_pipeline_uninit at the end of eng_run (before disconnect) frees tile memory while
+// the still-alive drdynvc channel thread is running the progressive decoder (tile thread pool), causing
+// a UAF crash (progressive_rfx_decode_component, pc=0). disconnect calls this handler while stopping the
+// channel, so by this point that channel's decoding has finished.
 static void eng_channel_disconnected(void *context, const ChannelDisconnectedEventArgs *e) {
     RDPEngine *eng = ((engContext *)context)->engine;
     if (strcmp(e->name, RDPGFX_DVC_CHANNEL_NAME) == 0) {
         rdpGdi *gdi = ((rdpContext *)context)->gdi;
         if (gdi && eng->gfx) gdi_graphics_pipeline_uninit(gdi, eng->gfx);
         eng->gfx = NULL;
-        fprintf(stderr, "[rdpgfx] 채널 해제됨\n");
+        fprintf(stderr, "[rdpgfx] channel disconnected\n");
     } else if (strcmp(e->name, CLIPRDR_SVC_CHANNEL_NAME) == 0) {
-        // 메인 스레드 클립보드 광고가 해제된 채널 컨텍스트를 만지지 않게 NULL.
+        // NULL it so a main-thread clipboard advertisement doesn't touch the freed channel context.
         pthread_mutex_lock(&eng->clipLock);
         eng->clip = NULL;
         pthread_mutex_unlock(&eng->clipLock);
     } else if (strcmp(e->name, DISP_DVC_CHANNEL_NAME) == 0) {
-        eng->disp = NULL;   // 리사이즈 요청이 해제된 채널을 만지지 않게
+        eng->disp = NULL;   // so a resize request doesn't touch the freed channel
     }
 }
 
-// 로컬 파일 클립보드 포맷 목록 전송(local→remote 광고: FileGroupDescriptorW + FileContents)
-// clip 포인터는 채널 해제(eng_channel_disconnected)와 경합하지 않게 잠금 하에 읽는다.
+// Send the local file clipboard format list (local→remote advertisement: FileGroupDescriptorW + FileContents).
+// The clip pointer is read under lock so it doesn't race with channel disconnect (eng_channel_disconnected).
 static void eng_announce_local_files(RDPEngine *e) {
     pthread_mutex_lock(&e->clipLock);
     CliprdrClientContext *clip = e->clip;
@@ -596,7 +596,7 @@ static void eng_announce_local_files(RDPEngine *e) {
     clip->ClientFormatList(clip, &list);
 }
 
-// 로컬 클립보드 텍스트 포맷 목록 전송(local→remote 광고)
+// Send the local clipboard text format list (local→remote advertisement)
 static void eng_announce_local_text(RDPEngine *e) {
     pthread_mutex_lock(&e->clipLock);
     CliprdrClientContext *clip = e->clip;
@@ -612,9 +612,9 @@ static void eng_announce_local_text(RDPEngine *e) {
     clip->ClientFormatList(clip, &list);
 }
 
-#pragma mark - 실행
+#pragma mark - Execution
 
-// 인스턴스 생성 + 콜백/설정 구성(연결 직전 상태).
+// Create the instance + configure callbacks/settings (state just before connecting).
 static freerdp *eng_new_instance(RDPEngine *e) {
     freerdp *instance = freerdp_new();
     if (!instance) return NULL;
@@ -643,72 +643,72 @@ static freerdp *eng_new_instance(RDPEngine *e) {
     freerdp_settings_set_uint32(s, FreeRDP_DesktopWidth, 1440);
     freerdp_settings_set_uint32(s, FreeRDP_DesktopHeight, 900);
     freerdp_settings_set_uint32(s, FreeRDP_ColorDepth, 32);
-    // Graphics Pipeline(RDPGFX) — 서버가 H.264/AVC444/RemoteFX progressive로 인코딩 +
-    // 변경 영역만 갱신 → 레거시 GDI보다 매끄럽다. gdi gfx 파이프라인은 채널 연결 시 연결.
+    // Graphics Pipeline (RDPGFX) — the server encodes with H.264/AVC444/RemoteFX progressive +
+    // updates only changed regions → smoother than legacy GDI. The gdi gfx pipeline is connected on channel connect.
     freerdp_settings_set_bool(s, FreeRDP_SupportGraphicsPipeline, TRUE);
     freerdp_settings_set_bool(s, FreeRDP_GfxProgressive, TRUE);
     freerdp_settings_set_bool(s, FreeRDP_GfxH264, TRUE);
     freerdp_settings_set_bool(s, FreeRDP_GfxAVC444v2, TRUE);
     freerdp_settings_set_bool(s, FreeRDP_RedirectClipboard, e->featClipboard ? TRUE : FALSE);
-    freerdp_settings_set_bool(s, FreeRDP_SupportDisplayControl, TRUE); // 동적 해상도
-    // 프린터 리다이렉션(.wsb PrinterRedirection): rdpdr + CUPS 백엔드(호스트 프린터→게스트).
+    freerdp_settings_set_bool(s, FreeRDP_SupportDisplayControl, TRUE); // dynamic resolution
+    // Printer redirection (.wsb PrinterRedirection): rdpdr + CUPS backend (host printer→guest).
     freerdp_settings_set_bool(s, FreeRDP_RedirectPrinters, e->featPrinter ? TRUE : FALSE);
-    // 공유 폴더(.wsb MappedFolders): rdpdr drive 장치로 **지정 디렉토리만** 게스트에 노출.
-    // RedirectDrives=TRUE는 핫플러그로 호스트 전체 볼륨까지 공유하므로 쓰지 않는다(보안).
+    // Shared folders (.wsb MappedFolders): expose **only the specified directories** to the guest as rdpdr drive devices.
+    // RedirectDrives=TRUE would also share entire host volumes via hot-plug, so it is not used (security).
     for (int i = 0; i < e->mappedCount; i++) {
         const char *args[] = { "drive", e->mapped[i].name, e->mapped[i].path };
         freerdp_client_add_device_channel(s, 3, args);
     }
-    // 오디오 재생(게스트→호스트, 스피커): rdpsnd + macOS CoreAudio. .wsb엔 토글이 없어
-    // 기본 켬(Windows Sandbox도 게스트 오디오를 항상 호스트로 재생). 옵션으로만 끈다.
+    // Audio playback (guest→host, speaker): rdpsnd + macOS CoreAudio. .wsb has no toggle, so it is
+    // on by default (Windows Sandbox also always plays guest audio to the host). Only turned off via option.
     freerdp_settings_set_bool(s, FreeRDP_AudioPlayback, e->featSound ? TRUE : FALSE);
-    // 마이크(호스트→게스트): audin + macOS AVFAudio. .wsb AudioInput으로 게이팅.
-    // 최초 사용 시 macOS 마이크 권한 프롬프트(Info.plist NSMicrophoneUsageDescription).
+    // Mic (host→guest): audin + macOS AVFAudio. Gated by .wsb AudioInput.
+    // On first use, a macOS microphone permission prompt (Info.plist NSMicrophoneUsageDescription).
     freerdp_settings_set_bool(s, FreeRDP_AudioCapture, e->featMic ? TRUE : FALSE);
-    if (e->reqW > 0 && e->reqH > 0) { // 초기 해상도(창 크기)가 정해져 있으면 그걸로 연결
+    if (e->reqW > 0 && e->reqH > 0) { // if an initial resolution (window size) is set, connect with it
         freerdp_settings_set_uint32(s, FreeRDP_DesktopWidth, (UINT32)(e->reqW & ~1));
         freerdp_settings_set_uint32(s, FreeRDP_DesktopHeight, (UINT32)(e->reqH & ~1));
     }
-    // 연결 시점 DPI 배율(세션 시작부터 적용). 디스플레이 배율(Retina=200)에 맞춰 UI 크기 보정.
+    // DPI scale at connect time (applied from session start). Adjusts UI size to match the display scale (Retina=200).
     {
-        UINT32 sc = (e->reqScale >= 100) ? (UINT32)e->reqScale : 200; // 기본 Retina 200%
+        UINT32 sc = (e->reqScale >= 100) ? (UINT32)e->reqScale : 200; // default Retina 200%
         if (sc > 500) sc = 500;
         freerdp_settings_set_uint32(s, FreeRDP_DesktopScaleFactor, sc);
         freerdp_settings_set_uint32(s, FreeRDP_DeviceScaleFactor, 100);
     }
-    // 클라이언트 키보드 식별 — 게스트의 세션 키보드 드라이버 선택 기준(한/영 키 매핑 등).
-    // 예: 한국어 (8,3,0x412)면 게스트가 kbd101a를 골라 오른쪽 Alt가 한/영 전환이 된다.
+    // Client keyboard identity — the basis for the guest's session keyboard driver selection (한/영 key mapping etc.).
+    // e.g. for Korean (8,3,0x412) the guest picks kbd101a so right Alt becomes the 한/영 toggle.
     if (e->kbdType > 0)
         freerdp_settings_set_uint32(s, FreeRDP_KeyboardType, (UINT32)e->kbdType);
     if (e->kbdSubtype > 0)
         freerdp_settings_set_uint32(s, FreeRDP_KeyboardSubType, (UINT32)e->kbdSubtype);
     if (e->kbdLayout > 0)
         freerdp_settings_set_uint32(s, FreeRDP_KeyboardLayout, (UINT32)e->kbdLayout);
-    // 채널(cliprdr/disp) 로드 + 구독은 PreConnect(eng_pre_connect)에서 처리.
+    // Channel (cliprdr/disp) load + subscribe is handled in PreConnect (eng_pre_connect).
     return instance;
 }
 
 static void eng_run(RDPEngine *e) {
-    // 채널 addin은 별도 플러그인 dylib가 아니라 libfreerdp-client3에 정적 빌드돼 있다.
-    // 정적 addin provider를 등록해야 cliprdr 등을 찾는다(기본 동적 로딩은 실패).
+    // The channel addins are statically built into libfreerdp-client3, not separate plugin dylibs.
+    // The static addin provider must be registered to find cliprdr etc. (default dynamic loading fails).
     freerdp_register_addin_provider(freerdp_channels_load_static_addin_entry, 0);
 
-    // 연결 재시도 — 게스트 부팅 중(QEMU hostfwd는 즉시 수락하나 RDP 서버 미준비)에는
-    // freerdp_connect가 빠르게 실패하므로, 게스트 RDP가 뜰 때까지 재시도한다.
+    // Connection retry — while the guest is booting (QEMU hostfwd accepts immediately but the RDP server isn't ready),
+    // freerdp_connect fails quickly, so retry until the guest RDP comes up.
     freerdp *instance = NULL;
     int connected = 0, attempt = 0;
     while (!e->stop) {
         instance = eng_new_instance(e);
-        if (!instance) { eng_status(e, "초기화 실패"); return; }
+        if (!instance) { eng_status(e, "Initialization failed"); return; }
         e->instance = instance;
-        eng_status(e, attempt == 0 ? "연결 중..." : "게스트 RDP 대기...");
+        eng_status(e, attempt == 0 ? "Connecting..." : "Waiting for guest RDP...");
         if (freerdp_connect(instance)) { connected = 1; break; }
-        // 실패 → 정리 후 잠시 뒤 재시도
+        // failure → clean up then retry after a short delay
         freerdp_context_free(instance);
         freerdp_free(instance);
         e->instance = NULL;
         attempt++;
-        for (int i = 0; i < 20 && !e->stop; i++) usleep(100000); // ~2초
+        for (int i = 0; i < 20 && !e->stop; i++) usleep(100000); // ~2 seconds
     }
     if (!connected) return;
 
@@ -721,11 +721,11 @@ static void eng_run(RDPEngine *e) {
         if (!freerdp_check_event_handles(instance->context)) break;
     }
 
-    eng_status(e, "연결 종료");
-    // 그래픽 파이프라인 해제는 disconnect 중 ChannelDisconnected(rdpgfx) 핸들러가 수행한다
-    // (여기서 먼저 해제하면 진행 중인 progressive 타일 디코딩과 레이스 → UAF 크래시).
+    eng_status(e, "Connection closed");
+    // Graphics pipeline teardown is performed by the ChannelDisconnected (rdpgfx) handler during disconnect
+    // (freeing it first here would race with in-progress progressive tile decoding → UAF crash).
     freerdp_disconnect(instance);
-    if (e->gfx) {   // 이벤트 미발화 폴백 — 이 시점엔 채널 스레드가 모두 정지된 상태
+    if (e->gfx) {   // fallback if the event didn't fire — by this point all channel threads are stopped
         if (instance->context->gdi)
             gdi_graphics_pipeline_uninit(instance->context->gdi, e->gfx);
         e->gfx = NULL;
@@ -755,7 +755,7 @@ RDPEngine *rdp_engine_create(const char *host, int port,
     e->onStatus = onStatus;
     e->onRemoteText = onRemoteText;
     e->userdata = userdata;
-    // 기본값: Windows Sandbox 표준(클립보드·마이크·스피커 on, 프린터 off). set_*로 덮어쓴다.
+    // Defaults: Windows Sandbox standard (clipboard·mic·speaker on, printer off). Overridden via set_*.
     e->featClipboard = 1;
     e->featMic = 1;
     e->featPrinter = 0;
@@ -783,7 +783,7 @@ void rdp_engine_send_sync_locks(RDPEngine *e, int capsLock, int numLock) {
     freerdp_input_send_synchronize_event(e->instance->context->input, flags);
 }
 
-// 리다이렉션 기능 게이팅(.wsb 반영). rdp_engine_start 전에 호출해야 한다.
+// Gate redirection features (reflecting .wsb). Must be called before rdp_engine_start.
 void rdp_engine_set_features(RDPEngine *e, int clipboard, int mic, int printer) {
     if (!e) return;
     e->featClipboard = clipboard ? 1 : 0;
@@ -791,8 +791,8 @@ void rdp_engine_set_features(RDPEngine *e, int clipboard, int mic, int printer) 
     e->featPrinter = printer ? 1 : 0;
 }
 
-// 호스트 폴더 공유(.wsb MappedFolder). rdp_engine_start 전에 호출. readOnly는 FreeRDP drive가
-// 미지원이라 읽기/쓰기로 공유된다(요청 시 경고만).
+// Share a host folder (.wsb MappedFolder). Call before rdp_engine_start. readOnly is unsupported by FreeRDP drive,
+// so it is shared read/write (only a warning when requested).
 void rdp_engine_add_mapped_folder(RDPEngine *e, const char *hostPath, const char *name, int readOnly) {
     if (!e || !hostPath || !hostPath[0] || e->mappedCount >= 16) return;
     int i = e->mappedCount;
@@ -801,7 +801,7 @@ void rdp_engine_add_mapped_folder(RDPEngine *e, const char *hostPath, const char
              (name && name[0]) ? name : "share");
     e->mappedCount++;
     if (readOnly)
-        fprintf(stderr, "[drive] '%s' 읽기전용 요청 — FreeRDP drive 미지원, 읽기/쓰기로 공유\n",
+        fprintf(stderr, "[drive] '%s' read-only requested — unsupported by FreeRDP drive, shared read/write\n",
                 e->mapped[i].name);
 }
 
@@ -811,7 +811,7 @@ void rdp_engine_set_files_callback(RDPEngine *e, RDPClipboardFilesCallback cb) {
 
 void rdp_engine_request_resize(RDPEngine *e, int width, int height, int scalePercent) {
     if (!e || width <= 0 || height <= 0) return;
-    e->reqW = width; e->reqH = height;            // 연결 전이면 보관했다 disp 연결 시 전송
+    e->reqW = width; e->reqH = height;            // if before connecting, store it and send on disp connect
     e->reqScale = scalePercent > 0 ? scalePercent : 100;
     eng_send_resize(e);
 }
@@ -821,12 +821,12 @@ void rdp_engine_set_local_clipboard_text(RDPEngine *e, const char *utf8) {
     pthread_mutex_lock(&e->clipLock);
     free(e->localText);
     e->localText = utf8 ? strdup(utf8) : NULL;
-    e->localItemCount = 0; // 텍스트로 바뀌면 로컬 파일 공유 해제
+    e->localItemCount = 0; // switching to text releases local file sharing
     pthread_mutex_unlock(&e->clipLock);
-    eng_announce_local_text(e); // 게스트에 텍스트 포맷 보유를 광고
+    eng_announce_local_text(e); // advertise to the guest that we hold a text format
 }
 
-// 로컬 경로를 localItems에 추가(폴더면 재귀 전개). 호출자가 clipLock 보유.
+// Add a local path to localItems (recursively expand if a folder). The caller holds clipLock.
 static void ft_add_local(RDPEngine *e, const char *local, const char *rel) {
     if (e->localItemCount >= FT_MAX_FILES) return;
     struct stat st;
@@ -845,7 +845,7 @@ static void ft_add_local(RDPEngine *e, const char *local, const char *rel) {
                 if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0) continue;
                 char cl[1300], cr[600];
                 snprintf(cl, sizeof(cl), "%s/%s", local, de->d_name);
-                snprintf(cr, sizeof(cr), "%s\\%s", rel, de->d_name); // 게스트는 '\' 구분
+                snprintf(cr, sizeof(cr), "%s\\%s", rel, de->d_name); // the guest uses '\' separators
                 ft_add_local(e, cl, cr);
             }
             closedir(d);
@@ -859,11 +859,11 @@ void rdp_engine_set_local_clipboard_files(RDPEngine *e, const char *const *paths
     pthread_mutex_lock(&e->clipLock);
     e->localItemCount = 0;
     for (int i = 0; i < count; i++) {
-        if (paths[i]) ft_add_local(e, paths[i], base_name(paths[i])); // 폴더 재귀 전개
+        if (paths[i]) ft_add_local(e, paths[i], base_name(paths[i])); // recursively expand folders
     }
-    free(e->localText); e->localText = NULL; // 파일로 바뀌면 로컬 텍스트 공유 해제
+    free(e->localText); e->localText = NULL; // switching to files releases local text sharing
     pthread_mutex_unlock(&e->clipLock);
-    eng_announce_local_files(e); // 게스트에 파일 포맷 보유를 광고
+    eng_announce_local_files(e); // advertise to the guest that we hold a file format
 }
 
 void rdp_engine_send_pointer(RDPEngine *e, uint16_t flags, int x, int y) {

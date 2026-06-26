@@ -19,42 +19,42 @@
 - (void)ingestImage:(CGImageRef)img width:(int)w height:(int)h frameMs:(double)ms;
 @end
 
-// 이 파일은 AppKit만 import한다. freerdp/winpr 타입은 rdp_engine(plain C)에 격리되어
-// CoreFoundation COM 타입과의 충돌을 피한다.
+// This file imports only AppKit. The freerdp/winpr types are isolated in rdp_engine (plain C)
+// to avoid conflicts with CoreFoundation COM types.
 
 @implementation RDPView {
     RDPEngine *_engine;
     NSLock *_lock;
-    int _w, _h;                 // 현재 RDP 프레임 크기(입력 좌표 매핑용)
-    CGImageRef _pendingImage;   // 최신 프레임(코얼레싱) — 메인에서 layer.contents로 소비
+    int _w, _h;                 // current RDP frame size (for input coordinate mapping)
+    CGImageRef _pendingImage;   // latest frame (coalescing) — consumed on main via layer.contents
 
-    NSTimer *_clipTimer;        // 로컬 NSPasteboard 변경 감시
+    NSTimer *_clipTimer;        // watches local NSPasteboard changes
     NSInteger _lastChangeCount;
     BOOL _gotFirstFrame;
 
-    int _kbdType, _kbdSubtype, _kbdLayout;  // 클라이언트 키보드 식별(0 = 기본)
-    double _wheelAccumY, _wheelAccumX;      // 트랙패드 정밀 스크롤 누적(120 = 1노치)
-    double _magnifyAccum;                   // 핀치 줌 누적 → Ctrl+휠로 변환
+    int _kbdType, _kbdSubtype, _kbdLayout;  // client keyboard identity (0 = default)
+    double _wheelAccumY, _wheelAccumX;      // trackpad precise scroll accumulation (120 = 1 notch)
+    double _magnifyAccum;                   // pinch zoom accumulation → converted to Ctrl+wheel
 
-    // 렌더 계측(프레임률·이미지 생성 시간)
+    // render instrumentation (frame rate · image creation time)
     double _frameMsAccum;
     int _frameCount;
     CFAbsoluteTime _lastReport;
 
-    NSMutableArray<NSDictionary *> *_mappedFolders; // 공유 폴더(연결 전 수집)
+    NSMutableArray<NSDictionary *> *_mappedFolders; // shared folders (collected before connect)
 }
 
 - (instancetype)initWithFrame:(NSRect)frameRect {
     self = [super initWithFrame:frameRect];
     if (self) {
         _lock = [NSLock new];
-        _statusText = @"대기";
+        _statusText = @"Idle";
         self.wantsLayer = YES;
         self.layer.backgroundColor = NSColor.blackColor.CGColor;
-        // RDP 프레임을 layer.contents로 직접 올려 GPU가 합성·스케일(드로잉 CPU 스케일 제거).
+        // Push RDP frames directly to layer.contents so the GPU composites and scales (removes CPU drawing scale).
         self.layer.contentsGravity = kCAGravityResize;
         self.layerContentsRedrawPolicy = NSViewLayerContentsRedrawNever;
-        _clipboardEnabled = YES;   // .wsb 기본(Windows Sandbox와 동일)
+        _clipboardEnabled = YES;   // .wsb default (same as Windows Sandbox)
         _micEnabled = YES;
         _printerEnabled = NO;
         _audioPlaybackEnabled = YES;
@@ -64,13 +64,13 @@
     return self;
 }
 
-// 비뒤집힘 뷰(기본) — top-down 프레임버퍼를 NSImage drawInRect로 정방향 렌더.
-// (뒤집힘 뷰 + drawInRect는 보정이 한 번 더 들어가 상하 반전됨)
+// Non-flipped view (default) — renders a top-down framebuffer upright via NSImage drawInRect.
+// (A flipped view + drawInRect applies the correction once more and ends up vertically inverted.)
 - (BOOL)isFlipped { return NO; }
 
-#pragma mark - 엔진 콜백 (연결 스레드에서 호출)
+#pragma mark - Engine callbacks (called on the connection thread)
 
-// BGRX32(top-down) 버퍼 → 불투명 CGImage(버퍼 복사 — 이후 재사용 안전).
+// BGRX32 (top-down) buffer → opaque CGImage (buffer is copied — safe to reuse afterward).
 static CGImageRef rv_make_image(const uint8_t *bgrx, int w, int h, int stride) {
     CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
     CGContextRef bmp = CGBitmapContextCreate((void *)bgrx, w, h, 8, stride, cs,
@@ -87,7 +87,7 @@ static void rv_on_frame(void *ud, const uint8_t *bgrx, int w, int h, int stride)
     CFAbsoluteTime t0 = CFAbsoluteTimeGetCurrent();
     CGImageRef img = rv_make_image(bgrx, w, h, stride);
     double ms = (CFAbsoluteTimeGetCurrent() - t0) * 1000.0;
-    if (img) [self ingestImage:img width:w height:h frameMs:ms]; // 소유권 이전
+    if (img) [self ingestImage:img width:w height:h frameMs:ms]; // ownership transferred
 }
 
 static void rv_on_status(void *ud, const char *status) {
@@ -96,7 +96,7 @@ static void rv_on_status(void *ud, const char *status) {
     dispatch_async(dispatch_get_main_queue(), ^{ self->_statusText = s; });
 }
 
-// 원격(게스트) 클립보드 텍스트 도착 → 호스트 NSPasteboard에 기록.
+// Remote (guest) clipboard text arrives → written to the host NSPasteboard.
 static void rv_on_remote_text(void *ud, const char *utf8) {
     RDPView *self = (__bridge RDPView *)ud;
     NSString *s = utf8 ? [NSString stringWithUTF8String:utf8] : nil;
@@ -105,12 +105,12 @@ static void rv_on_remote_text(void *ud, const char *utf8) {
         NSPasteboard *pb = NSPasteboard.generalPasteboard;
         [pb clearContents];
         [pb setString:s forType:NSPasteboardTypeString];
-        self->_lastChangeCount = pb.changeCount; // 에코 방지(우리가 쓴 변경은 무시)
-        NSLog(@"[RDPView] 원격→로컬 클립보드: %lu자", (unsigned long)s.length);
+        self->_lastChangeCount = pb.changeCount; // echo prevention (ignore the change we wrote)
+        NSLog(@"[RDPView] remote→local clipboard: %lu chars", (unsigned long)s.length);
     });
 }
 
-// 원격(게스트)에서 복사된 파일들이 호스트 임시폴더로 도착(윈도우→Mac) → NSPasteboard에 파일 URL로.
+// Files copied on the remote (guest) arrive in the host temp folder (Windows→Mac) → placed on NSPasteboard as file URLs.
 static void rv_on_remote_files(void *ud, const char *const *paths, int count) {
     RDPView *self = (__bridge RDPView *)ud;
     NSMutableArray<NSURL *> *urls = [NSMutableArray array];
@@ -124,15 +124,15 @@ static void rv_on_remote_files(void *ud, const char *const *paths, int count) {
     dispatch_async(dispatch_get_main_queue(), ^{
         NSPasteboard *pb = NSPasteboard.generalPasteboard;
         [pb clearContents];
-        [pb writeObjects:urls]; // Finder 등에서 붙여넣기 가능한 파일 URL
+        [pb writeObjects:urls]; // file URLs pasteable in Finder etc.
         self->_lastChangeCount = pb.changeCount;
-        NSLog(@"[RDPView] 원격→로컬 파일 %lu개 → 클립보드", (unsigned long)urls.count);
+        NSLog(@"[RDPView] remote→local %lu file(s) → clipboard", (unsigned long)urls.count);
     });
 }
 
-#pragma mark - 렌더 (CGImage → layer.contents, GPU 합성)
+#pragma mark - Render (CGImage → layer.contents, GPU compositing)
 
-// 최신 프레임만 보관(코얼레싱) 후 메인에서 소비. img 소유권을 가져간다.
+// Keep only the latest frame (coalescing) then consume on main. Takes ownership of img.
 - (void)ingestImage:(CGImageRef)img width:(int)w height:(int)h frameMs:(double)ms {
     [_lock lock];
     _w = w; _h = h;
@@ -140,7 +140,7 @@ static void rv_on_remote_files(void *ud, const char *const *paths, int count) {
     _pendingImage = img;
     _frameMsAccum += ms; _frameCount++;
     [_lock unlock];
-    if (old) CGImageRelease(old);   // 화면에 못 올라간 이전 프레임 폐기
+    if (old) CGImageRelease(old);   // discard the previous frame that never made it to screen
     dispatch_async(dispatch_get_main_queue(), ^{ [self consumePending]; });
 }
 
@@ -154,19 +154,19 @@ static void rv_on_remote_files(void *ud, const char *const *paths, int count) {
     double fps = report ? _frameCount / (now - _lastReport) : 0;
     if (report) { _frameMsAccum = 0; _frameCount = 0; _lastReport = now; }
     [_lock unlock];
-    if (!img) return;                            // 이미 더 최신 프레임이 처리됨
+    if (!img) return;                            // a newer frame was already processed
 
-    self.layer.contents = (__bridge id)img;      // GPU 업로드+합성+스케일
+    self.layer.contents = (__bridge id)img;      // GPU upload + composite + scale
     CGImageRelease(img);
-    if (report) NSLog(@"[RDPView] render %.0f fps, img생성 %.2f ms/frame", fps, avgMs);
+    if (report) NSLog(@"[RDPView] render %.0f fps, img creation %.2f ms/frame", fps, avgMs);
     if (!_gotFirstFrame) {
         _gotFirstFrame = YES;
-        [self syncLockKeys];   // 연결 직후 호스트 Caps Lock/NumLock 상태를 게스트에 반영
+        [self syncLockKeys];   // right after connecting, reflect host Caps Lock/NumLock state to the guest
         if (self.onFirstFrame) self.onFirstFrame();
     }
 }
 
-#pragma mark - 입력 (마우스/키보드 → 게스트)
+#pragma mark - Input (mouse/keyboard → guest)
 
 - (BOOL)acceptsFirstResponder { return YES; }
 - (BOOL)becomeFirstResponder { return YES; }
@@ -176,7 +176,7 @@ static void rv_on_remote_files(void *ud, const char *const *paths, int count) {
     CGFloat w = self.bounds.size.width, h = self.bounds.size.height;
     int gw = _w > 0 ? _w : 1440, gh = _h > 0 ? _h : 900;
     *gx = (w > 0) ? (int)(p.x / w * gw) : 0;
-    *gy = (h > 0) ? (int)((h - p.y) / h * gh) : 0; // 비뒤집힘 뷰: y=0이 하단 → RDP(상단=0)로 반전
+    *gy = (h > 0) ? (int)((h - p.y) / h * gh) : 0; // non-flipped view: y=0 is bottom → invert to RDP (top=0)
 }
 
 - (void)sendPointer:(uint16_t)flags event:(NSEvent *)e {
@@ -196,8 +196,8 @@ static void rv_on_remote_files(void *ud, const char *const *paths, int count) {
 - (void)otherMouseDragged:(NSEvent *)e { [self sendPointer:RDP_PTR_MOVE | RDP_PTR_BUTTON3 event:e]; }
 - (void)rightMouseDragged:(NSEvent *)e { [self sendPointer:RDP_PTR_MOVE | RDP_PTR_BUTTON2 event:e]; }
 
-// 누적치에서 휠 1회분(±255 클램프)을 잘라 RDP 휠 이벤트로 전송. 잔여는 누적 유지.
-// 회전량은 flags 하위 9비트 2의 보수(음수 = NEGATIVE 플래그 + 하위 8비트 보수값).
+// Cut one wheel step (±255 clamped) from the accumulator and send it as an RDP wheel event. The remainder stays accumulated.
+// The rotation amount is the low 9 bits of flags in two's complement (negative = NEGATIVE flag + low 8-bit complement value).
 - (void)flushWheel:(double *)accum horizontal:(BOOL)horizontal event:(NSEvent *)e {
     if (!_engine) { *accum = 0; return; }
     int v = (int)*accum;
@@ -211,19 +211,19 @@ static void rv_on_remote_files(void *ud, const char *const *paths, int count) {
     rdp_engine_send_pointer(_engine, flags, x, y);
 }
 
-// 트랙패드/마우스 휠 → RDP 휠. 정밀 델타(트랙패드)는 픽셀 비례, 휠은 노치(±120) 단위.
-// scrollingDelta는 macOS '자연스러운 스크롤' 설정이 이미 반영된 값이라 그대로 따른다.
+// Trackpad/mouse wheel → RDP wheel. Precise deltas (trackpad) are pixel-proportional, the wheel uses notch (±120) units.
+// scrollingDelta already reflects the macOS 'natural scrolling' setting, so we follow it as-is.
 - (void)scrollWheel:(NSEvent *)e {
     double dy = e.scrollingDeltaY, dx = e.scrollingDeltaX;
-    if (e.hasPreciseScrollingDeltas) { dy *= 4.0; dx *= 4.0; }   // 1px ≈ 4/120 노치
-    else                             { dy *= 120.0; dx *= 120.0; } // 1라인 = 1노치
+    if (e.hasPreciseScrollingDeltas) { dy *= 4.0; dx *= 4.0; }   // 1px ≈ 4/120 notch
+    else                             { dy *= 120.0; dx *= 120.0; } // 1 line = 1 notch
     _wheelAccumY += dy;
-    _wheelAccumX -= dx;  // mac 오른쪽 패닝(+) = Windows 왼쪽 스크롤(-)
+    _wheelAccumX -= dx;  // mac rightward panning (+) = Windows leftward scroll (-)
     [self flushWheel:&_wheelAccumY horizontal:NO event:e];
     [self flushWheel:&_wheelAccumX horizontal:YES event:e];
 }
 
-// 핀치 줌 → Windows 표준 Ctrl+휠 줌. 누적 배율 0.1마다 1노치.
+// Pinch zoom → standard Windows Ctrl+wheel zoom. One notch per 0.1 accumulated magnification.
 - (void)magnifyWithEvent:(NSEvent *)e {
     if (!_engine) return;
     _magnifyAccum += e.magnification;
@@ -233,8 +233,8 @@ static void rv_on_remote_files(void *ud, const char *const *paths, int count) {
         uint16_t flags = RDP_PTR_WHEEL | (dir < 0 ? RDP_PTR_WHEEL_NEGATIVE : 0)
                        | (uint16_t)(dir & 0xFF);
         int x, y; [self guestX:&x y:&y fromEvent:e];
-        rdp_engine_send_mac_key(_engine, 59, 1);            // Ctrl down (좌측)
-        rdp_engine_send_pointer(_engine, flags, x, y);      // 휠 ±120
+        rdp_engine_send_mac_key(_engine, 59, 1);            // Ctrl down (left)
+        rdp_engine_send_pointer(_engine, flags, x, y);      // wheel ±120
         rdp_engine_send_mac_key(_engine, 59, 0);            // Ctrl up
     }
 }
@@ -242,30 +242,30 @@ static void rv_on_remote_files(void *ud, const char *const *paths, int count) {
 - (void)keyDown:(NSEvent *)e { if (_engine) rdp_engine_send_mac_key(_engine, e.keyCode, 1); }
 - (void)keyUp:(NSEvent *)e   { if (_engine) rdp_engine_send_mac_key(_engine, e.keyCode, 0); }
 
-// 현재 호스트 Caps Lock 상태를 게스트에 동기화(+ 키패드 일관성 위해 NumLock은 항상 on).
+// Sync the current host Caps Lock state to the guest (+ NumLock is always on for keypad consistency).
 - (void)syncLockKeys {
     if (!_engine) return;
     BOOL caps = (NSEvent.modifierFlags & NSEventModifierFlagCapsLock) != 0;
     rdp_engine_send_sync_locks(_engine, caps ? 1 : 0, 1);
 }
 
-// modifier 키는 flagsChanged로만 온다. keyCode로 좌/우를 구분해 그대로 전달한다
-// (오른쪽 Option=한/영 등 좌우가 다른 매핑 지원). 눌림/뗌은 장치별 플래그로 판정.
+// Modifier keys only arrive via flagsChanged. Distinguish left/right by keyCode and pass them through as-is
+// (supports mappings that differ between left and right, e.g. right Option = 한/영). Press/release is determined by per-device flags.
 - (void)flagsChanged:(NSEvent *)e {
     if (!_engine) return;
-    // NX_DEVICE*KEYMASK (IOKit 장치별 modifier 플래그 — 좌/우 개별 상태)
+    // NX_DEVICE*KEYMASK (IOKit per-device modifier flags — individual left/right state)
     static const struct { uint16_t keyCode; NSEventModifierFlags deviceMask; } mods[] = {
         { 56, 0x0002 },   // left shift
         { 60, 0x0004 },   // right shift
         { 59, 0x0001 },   // left control
         { 62, 0x2000 },   // right control
         { 58, 0x0020 },   // left option
-        { 61, 0x0040 },   // right option (한국어 키보드 타입이면 게스트에서 한/영)
+        { 61, 0x0040 },   // right option (한/영 on the guest if the keyboard type is Korean)
         { 55, 0x0008 },   // left command
         { 54, 0x0010 },   // right command
     };
     uint16_t kc = e.keyCode;
-    if (kc == 57) {       // Caps Lock — 키 자체 대신 토글 상태를 동기화(상태 불일치 방지)
+    if (kc == 57) {       // Caps Lock — sync the toggle state instead of the key itself (avoid state mismatch)
         [self syncLockKeys];
         return;
     }
@@ -277,7 +277,7 @@ static void rv_on_remote_files(void *ud, const char *const *paths, int count) {
     }
 }
 
-// 동적 해상도: 뷰 크기가 바뀌면(디바운스) 게스트 데스크톱을 창의 픽셀 크기에 맞춘다.
+// Dynamic resolution: when the view size changes (debounced), fit the guest desktop to the window's pixel size.
 - (void)setFrameSize:(NSSize)newSize {
     [super setFrameSize:newSize];
     [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(pushResize) object:nil];
@@ -288,22 +288,22 @@ static void rv_on_remote_files(void *ud, const char *const *paths, int count) {
     if (!_engine) return;
     int w, h, scale;
     if (_hiDPIEnabled) {
-        NSSize px = [self convertSizeToBacking:self.bounds.size]; // 포인트→백킹 픽셀(선명도)
+        NSSize px = [self convertSizeToBacking:self.bounds.size]; // point→backing pixels (sharpness)
         w = (int)(px.width + 0.5); h = (int)(px.height + 0.5);
-        // 게스트 DPI 배율을 호스트 디스플레이 배율에 맞춤(Retina 2x → 200% → UI가 작지 않게).
+        // Match the guest DPI scale to the host display scale (Retina 2x → 200% → so the UI isn't too small).
         CGFloat bs = self.window.backingScaleFactor;
         if (bs < 1.0) bs = NSScreen.mainScreen.backingScaleFactor;
         if (bs < 1.0) bs = 1.0;
         scale = (int)(bs * 100.0 + 0.5);
     } else {
-        // 표준 해상도 — 포인트 크기 그대로(렌더 부하↓, 선명도↓), DPI 100%.
+        // Standard resolution — point size as-is (less render load, less sharpness), DPI 100%.
         w = (int)(self.bounds.size.width + 0.5); h = (int)(self.bounds.size.height + 0.5);
         scale = 100;
     }
     if (w > 0 && h > 0) rdp_engine_request_resize(_engine, w, h, scale);
 }
 
-// 마우스 이동 추적 활성화
+// Enable mouse move tracking
 - (void)updateTrackingAreas {
     [super updateTrackingAreas];
     for (NSTrackingArea *a in self.trackingAreas) [self removeTrackingArea:a];
@@ -313,7 +313,7 @@ static void rv_on_remote_files(void *ud, const char *const *paths, int count) {
     [self addTrackingArea:ta];
 }
 
-#pragma mark - 공개 API
+#pragma mark - Public API
 
 - (void)connectToHost:(NSString *)host port:(int)port
              username:(NSString *)username password:(NSString *)password {
@@ -332,7 +332,7 @@ static void rv_on_remote_files(void *ud, const char *const *paths, int count) {
     }
     rdp_engine_set_files_callback(_engine, rv_on_remote_files);
     rdp_engine_start(_engine);
-    // 로컬 클립보드 변경 감시(local→remote)
+    // watch for local clipboard changes (local→remote)
     _lastChangeCount = NSPasteboard.generalPasteboard.changeCount;
     _clipTimer = [NSTimer scheduledTimerWithTimeInterval:0.5 target:self
                   selector:@selector(checkLocalClipboard) userInfo:nil repeats:YES];
@@ -355,7 +355,7 @@ static void rv_on_remote_files(void *ud, const char *const *paths, int count) {
     _lastChangeCount = pb.changeCount;
     if (!_engine) return;
 
-    // 파일 URL 우선(local→remote 파일: Mac→윈도우)
+    // file URLs first (local→remote files: Mac→Windows)
     NSArray<NSURL *> *urls = [pb readObjectsForClasses:@[NSURL.class]
                               options:@{ NSPasteboardURLReadingFileURLsOnlyKey: @YES }];
     if (urls.count > 0) {
@@ -368,7 +368,7 @@ static void rv_on_remote_files(void *ud, const char *const *paths, int count) {
         }
         if (n > 0) {
             rdp_engine_set_local_clipboard_files(_engine, paths, n);
-            NSLog(@"[RDPView] 로컬→원격 파일 %d개", n);
+            NSLog(@"[RDPView] local→remote %d file(s)", n);
             return;
         }
     }
@@ -376,7 +376,7 @@ static void rv_on_remote_files(void *ud, const char *const *paths, int count) {
     NSString *s = [pb stringForType:NSPasteboardTypeString];
     if (s.length) {
         rdp_engine_set_local_clipboard_text(_engine, s.UTF8String);
-        NSLog(@"[RDPView] 로컬→원격 클립보드: %lu자", (unsigned long)s.length);
+        NSLog(@"[RDPView] local→remote clipboard: %lu chars", (unsigned long)s.length);
     }
 }
 
@@ -395,7 +395,7 @@ static void rv_on_remote_files(void *ud, const char *const *paths, int count) {
 
 @end
 
-// 상하 반전 결정론 검증: top=빨강 / bottom=파랑 합성 프레임을 렌더해 위쪽이 빨강인지 확인.
+// Deterministic vertical-flip check: render a composed frame with top=red / bottom=blue and verify the top is red.
 int cfreerdp_fliptest(void) {
     @autoreleasepool {
         [NSApplication sharedApplication];
@@ -409,18 +409,18 @@ int cfreerdp_fliptest(void) {
                 else            { p[0] = 255; p[1] = 0; p[2] = 0;   p[3] = 255; } // bottom = BLUE
             }
         }
-        // 실제 윈도우 백킹에 올려야 cacheDisplayInRect가 layer.contents를 정확히 렌더.
+        // Must attach to a real window backing so cacheDisplayInRect renders layer.contents correctly.
         NSWindow *win = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, w, h)
                          styleMask:NSWindowStyleMaskBorderless backing:NSBackingStoreBuffered defer:NO];
         win.contentView = v;
         CGImageRef img = rv_make_image(buf, w, h, stride);
-        [v ingestImage:img width:w height:h frameMs:0]; // 소유권 이전
-        // consumePending(비동기)가 layer.contents를 설정하도록 런루프를 잠깐 돌림
+        [v ingestImage:img width:w height:h frameMs:0]; // ownership transferred
+        // run the run loop briefly so consumePending (asynchronous) sets layer.contents
         [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.3]];
         [v displayIfNeeded];
         NSBitmapImageRep *rep = [v bitmapImageRepForCachingDisplayInRect:v.bounds];
         [v cacheDisplayInRect:v.bounds toBitmapImageRep:rep];
-        NSInteger pw = rep.pixelsWide, ph = rep.pixelsHigh;  // Retina면 2x
+        NSInteger pw = rep.pixelsWide, ph = rep.pixelsHigh;  // 2x on Retina
         NSColor *top = [[rep colorAtX:pw / 2 y:ph / 10] colorUsingColorSpace:NSColorSpace.deviceRGBColorSpace];
         NSColor *bot = [[rep colorAtX:pw / 2 y:ph - ph / 10 - 1] colorUsingColorSpace:NSColorSpace.deviceRGBColorSpace];
         int ok = (top.redComponent > 0.5 && top.blueComponent < 0.5 &&
