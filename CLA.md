@@ -1,9 +1,9 @@
 # MacSandbox Contributor License Agreement (CLA) — DRAFT TEMPLATE
 
-> ⚠️ **초안 템플릿 — 법적 자문 아님.** 정식 채택 전 IP 변호사 검토 필수.
-> 목적: 외부 기여를 받더라도 프로젝트가 그 기여를 **AGPL-3.0(오픈) + 상용** 두 라이선스로
-> 계속 배포(듀얼 라이선스)할 수 있도록 기여자로부터 충분한 권리를 확보하기 위함입니다.
-> (단독 개발 단계에서는 불필요하며, 외부 PR을 병합하기 시작할 때부터 필요합니다.)
+> ⚠️ **Draft template — not legal advice.** Review by an IP attorney is required before official adoption.
+> Purpose: to secure sufficient rights from contributors so that, even when accepting external contributions,
+> the project can continue to distribute (dual-license) those contributions under both the **AGPL-3.0 (open) + commercial**
+> licenses. (Not needed during the solo-development stage; needed from the point you begin merging external PRs.)
 
 ---
 
@@ -44,7 +44,7 @@ assignment).
 
 To the maximum extent permitted by applicable law, You agree not to assert
 against the Maintainer or its licensees any moral rights (including rights of
-attribution and integrity, 저작인격권) in Your Contribution, to the extent
+attribution and integrity) in Your Contribution, to the extent
 necessary for the exercise of the licenses granted in this Agreement.
 
 ## 3. Patent License
@@ -81,8 +81,8 @@ under their own licenses.
 ## 7. Governing Law
 
 This Agreement shall be governed by the laws of the Republic of Korea, without
-regard to conflict-of-laws principles. [조정 필요 / adjust as appropriate —
-COMMERCIAL-LICENSE.md와 동일 준거법 유지 권장.]
+regard to conflict-of-laws principles. [adjustment needed / adjust as appropriate —
+keeping the same governing law as COMMERCIAL-LICENSE.md is recommended.]
 
 ---
 
@@ -94,13 +94,14 @@ Agreed:
   Date:        ______________________________
   Signature:   ______________________________
 
-> 운영 팁: 대안으로 PR 본문/커밋에 다음 한 줄을 요구하는 "DCO + 재라이선스 동의" 경량
-> 방식을 쓸 수도 있습니다 —
+> Operational tip: As an alternative, you can use a lightweight "DCO + relicensing consent" approach that requires
+> the following single line in the PR body/commit —
 > "I agree to the MacSandbox CLA (CLA.md) and license my contribution for dual
-> (AGPL-3.0 + commercial) licensing." 다만 명시적 서명본 보관이 가장 안전합니다.
+> (AGPL-3.0 + commercial) licensing." That said, retaining an explicit signed copy is the safest.
 >
-> 변호사 검토 시 함께 결정할 항목:
-> 1. **라이선스형(현행) vs 저작권 양도형(FSF식) vs 독점 라이선스 + 공동 집행 권한(Project
->    Harmony식)** — 듀얼 라이선스 사업의 집행력(기여분에 대한 AGPL 위반 소송 적격) 비교.
-> 2. 법인 기여자용 **Corporate CLA(CCLA)** 별도 템플릿.
-> 3. CLA 동의 기록 방식(CLA-assistant 등 PR별 클릭 동의 + 버전/일시 보관).
+> Items to decide together during attorney review:
+> 1. **License type (current) vs. copyright-assignment type (FSF-style) vs. exclusive license + joint enforcement
+>    authority (Project Harmony-style)** — comparing the enforceability of the dual-license business (standing to
+>    sue for AGPL violations with respect to contributions).
+> 2. A separate **Corporate CLA (CCLA)** template for corporate contributors.
+> 3. The method of recording CLA consent (per-PR click-through consent via CLA-assistant, etc. + retaining version/timestamp).

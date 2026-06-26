@@ -1,10 +1,10 @@
 # MacSandbox Commercial License (DRAFT TEMPLATE)
 
-> ⚠️ **초안 템플릿 — 법적 자문 아님.** 정식 사용 전 IP 변호사 검토 필수.
-> 이 문서는 MacSandbox **자체 저작물 코드**를 AGPL-3.0 대신 상용 조건으로 사용하려는
-> 고객을 위한 라이선스의 골격입니다. 동봉되는 제3자 GPL/LGPL 구성요소(QEMU 등)에는
-> 적용되지 않으며, 그 부분은 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) 및 각자
-> 라이선스를 따릅니다.
+> ⚠️ **Draft template — not legal advice.** Review by an IP attorney is required before official use.
+> This document is the skeleton of a license for customers who wish to use MacSandbox's **own copyrighted code**
+> under commercial terms instead of AGPL-3.0. It does not apply to the bundled third-party GPL/LGPL components
+> (QEMU, etc.); those parts are governed by [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) and their respective
+> licenses.
 
 ---
 
@@ -84,7 +84,7 @@ Licensed Software under AGPLv3.
 ## 8. Governing Law
 
 This Agreement shall be governed by the laws of the Republic of Korea, without
-regard to conflict-of-laws principles. [조정 필요 / adjust as appropriate.]
+regard to conflict-of-laws principles. [adjustment needed / adjust as appropriate.]
 
 ## 9. Relationship to the Open-Source License
 
