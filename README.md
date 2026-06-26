@@ -1,5 +1,12 @@
 # macSandbox for Windows
 
+[![Release](https://img.shields.io/github/v/release/yourtablecloth/macSandbox?sort=semver&label=release)](https://github.com/yourtablecloth/macSandbox/releases/latest)
+[![Build](https://img.shields.io/github/actions/workflow/status/yourtablecloth/macSandbox/release.yml?label=Release%20DMG)](https://github.com/yourtablecloth/macSandbox/actions/workflows/release.yml)
+[![Downloads](https://img.shields.io/github/downloads/yourtablecloth/macSandbox/total?label=downloads)](https://github.com/yourtablecloth/macSandbox/releases)
+[![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-Apple%20Silicon-black?logo=apple&logoColor=white)](#requirements)
+[![macOS](https://img.shields.io/badge/macOS-Tahoe%2026%2B-black?logo=apple&logoColor=white)](#requirements)
+
 **Disposable Windows 11 ARM64 sandbox for Apple Silicon Macs** — the Windows
 Sandbox experience, on macOS. Boot a throwaway Windows environment in seconds
 from a prebuilt base image; every change is discarded on exit.
@@ -32,13 +39,45 @@ own Windows 11 ARM64 ISO via a fully deterministic, unattended
 
 ## Requirements
 
-- Apple Silicon Mac, macOS 14 (Sonoma) or later
+> **Apple Silicon only — Intel Macs are _not_ supported.** The runtime depends on
+> Apple Silicon virtualization (Hypervisor.framework) and a Windows 11 **ARM64**
+> guest; there is no Intel/x86 build or path.
+
+- **Apple Silicon Mac (M1 or later)** — Intel Macs are not supported
+- **macOS Tahoe (26) or later** (recommended minimum)
 - A **Windows 11 ARM64 ISO** you are licensed to use (e.g., from Microsoft's
   official download channels)
-- [Homebrew](https://brew.sh): `brew install freerdp wimlib`
-- Disk space: ~24 GB free during baseline build
+- ~24 GB free disk space during the one-time baseline build
 
-## Build & Run
+> **Minimum OS note:** the binary is built for macOS 14 (Sonoma) and links
+> `arm64_sonoma` dependencies, so it _may_ launch on macOS 14–15 — but only macOS
+> Tahoe has been tested, and HVF/virtualization behavior on earlier releases is
+> unverified. Use macOS Tahoe for a supported experience.
+
+Building **from source** additionally needs [Homebrew](https://brew.sh)
+(`brew install freerdp wimlib`); the packaged DMG bundles these libraries, so end users
+running the release do not need Homebrew.
+
+## Download & install
+
+Download the latest **`macSandbox-for-Windows-<version>.dmg`** from the
+[Releases page](https://github.com/yourtablecloth/macSandbox/releases/latest),
+open it, and drag **macSandbox for Windows** into **Applications**.
+
+> **This build is not signed or notarized** (ad-hoc signature), so macOS Gatekeeper
+> blocks it on first launch. To allow it:
+>
+> 1. Double-click the app — macOS blocks it ("Apple could not verify…").
+> 2. Open **System Settings → Privacy & Security**, scroll down to **Security**, and
+>    click **Open Anyway** next to the macSandbox message; authenticate, then **Open**.
+>
+> Or clear the quarantine flag from Terminal and open normally:
+>
+> ```sh
+> xattr -dr com.apple.quarantine "/Applications/macSandbox for Windows.app"
+> ```
+
+## Build from source
 
 ```sh
 # Development build
