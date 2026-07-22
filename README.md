@@ -55,8 +55,9 @@ own Windows 11 ARM64 ISO via a fully deterministic, unattended
 > unverified. Use macOS Tahoe for a supported experience.
 
 Building **from source** additionally needs [Homebrew](https://brew.sh)
-(`brew install freerdp wimlib`); the packaged DMG bundles these libraries, so end users
-running the release do not need Homebrew.
+(`brew install freerdp wimlib`). QEMU is **not** expected to come from Homebrew:
+source builds prepare a vendored `vendor/qemu` bundle instead, while the packaged DMG already
+includes the required QEMU binaries and libraries.
 
 ## Download & install
 
@@ -80,12 +81,24 @@ open it, and drag **macSandbox for Windows** into **Applications**.
 ## Build from source
 
 ```sh
-# Development build
-swift build && .build/debug/MacSandbox
+# Install source-build dependencies
+brew install freerdp wimlib
 
-# Packaged .app + DMG (bundles QEMU; see scripts/build.sh for vendor setup)
+# Prepare vendored QEMU (provides qemu-img, firmware, and shared libraries)
+python3 scripts/bundle_qemu.py
+
+# Development build (re-signs vendored QEMU for -accel hvf, then builds)
+scripts/build.sh
+.build/debug/MacSandbox
+
+# Packaged .app + DMG
 scripts/package_app.sh
 ```
+
+`brew install qemu` alone is not enough for source builds: the baseline disk creation step
+needs `qemu-img`, and guest boot uses `-accel hvf`, which requires the QEMU binary to be
+signed with the `com.apple.security.hypervisor` entitlement. `scripts/build.sh` applies that
+signing to `vendor/qemu/bin/qemu-system-aarch64`.
 
 On first launch the app asks for your Windows 11 ARM64 ISO and builds the
 baseline image unattended (one round, typically 20–40 minutes). After that,
