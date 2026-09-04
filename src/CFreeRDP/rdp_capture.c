@@ -78,7 +78,8 @@ static DWORD cf_verify_cert(freerdp *instance, const char *host, UINT16 port,
     return 1; // unconditionally accept the certificate (cert:ignore)
 }
 
-int cfreerdp_capture(const char *host, int port, const char *outpath) {
+int cfreerdp_capture(const char *host, int port, const char *username, const char *password,
+                     const char *outpath) {
     freerdp *instance = freerdp_new();
     if (!instance) return -1;
     instance->ContextSize = sizeof(cfCaptureContext);
@@ -98,8 +99,8 @@ int cfreerdp_capture(const char *host, int port, const char *outpath) {
     rdpSettings *s = instance->context->settings;
     freerdp_settings_set_string(s, FreeRDP_ServerHostname, host);
     freerdp_settings_set_uint32(s, FreeRDP_ServerPort, (UINT32)port);
-    freerdp_settings_set_string(s, FreeRDP_Username, "WDAGUtilityAccount");
-    freerdp_settings_set_string(s, FreeRDP_Password, "Sandbox!2026");
+    freerdp_settings_set_string(s, FreeRDP_Username, username);
+    freerdp_settings_set_string(s, FreeRDP_Password, password);
     freerdp_settings_set_bool(s, FreeRDP_AutoLogonEnabled, TRUE); // INFO_AUTOLOGON — desktop with no login screen
     freerdp_settings_set_bool(s, FreeRDP_IgnoreCertificate, TRUE);
     freerdp_settings_set_bool(s, FreeRDP_TlsSecurity, TRUE);

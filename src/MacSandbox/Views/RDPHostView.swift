@@ -20,7 +20,7 @@ struct RDPHostView: NSViewRepresentable {
     let host: String
     let port: Int
     var username: String = SandboxCreds.username
-    var password: String = SandboxCreds.password
+    let password: String
     /// Redirection features (reflecting .wsb). Speaker playback is always on (no .wsb toggle).
     var clipboardEnabled: Bool = true
     var micEnabled: Bool = true
@@ -90,6 +90,8 @@ private struct RDPViewTestContainer: View {
     }
     var body: some View {
         RDPHostView(host: RDPViewTest.host, port: RDPViewTest.port,
+                    username: RDPViewTest.username,
+                    password: RDPViewTest.password,
                     clipboardEnabled: RDPViewTest.clipboard,
                     micEnabled: RDPViewTest.mic,
                     printerEnabled: RDPViewTest.printer,
@@ -105,4 +107,6 @@ enum RDPViewTest {
     static var mic = true
     static var printer = false
     static var drivePath = ""
+    static var username = ""
+    static var password = ""
 }

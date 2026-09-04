@@ -61,6 +61,7 @@ struct SandboxView: View {
             Color.black
             if runner.rdpPort > 0 {
                 RDPHostView(host: "127.0.0.1", port: runner.rdpPort,
+                            password: runner.rdpPassword,
                             clipboardEnabled: runner.activeConfig.clipboardEnabled,
                             micEnabled: runner.activeConfig.audioInputEnabled,
                             printerEnabled: runner.activeConfig.printerEnabled,

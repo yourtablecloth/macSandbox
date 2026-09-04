@@ -87,7 +87,7 @@ The same approach Windows Sandbox itself uses internally with RDP. Two paths run
   redirection. (Webcam is unsupported because this FreeRDP build has no RDPECAM channel.)
 
 QEMU exposes RDP on the host via user-mode NAT + `hostfwd=tcp:127.0.0.1:<port>-:3389`, and
-FreeRDP logs on with `WDAGUtilityAccount` / a blank password / `/sec:tls` (the server rejects plain RDP as SSL_REQUIRED).
+The embedded FreeRDP client logs on with `WDAGUtilityAccount` and the per-baseline password stored in macOS Keychain.
 When networking is disabled, `restrict=on` blocks the internet while keeping RDP forwarding.
 
 > A user-mode hostfwd accepts host-side connects even before the guest RDP is ready, so port polling

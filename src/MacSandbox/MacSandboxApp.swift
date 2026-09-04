@@ -24,6 +24,7 @@ import CFreeRDP
 ///   - Switches: `--memory <MB>` `--cpus <N>` `--networking on|off` `--vgpu on|off`
 ///            `--clipboard on|off` `--audio on|off` `--printer on|off`
 ///            `--folder <path>[:ro]` (repeatable) `--logon "<command>"` (`--run` is a compatibility no-op)
+/// - RDP test tools read credentials from `MSBX_RDP_USERNAME` and `MSBX_RDP_PASSWORD`.
 ///   - When no switches/`.wsb` are specified, start with the Windows Sandbox standard defaults.
 @main
 enum AppEntry {
@@ -39,9 +40,15 @@ enum AppEntry {
             exit(cfreerdp_fliptest())
         }
         if let idx = args.firstIndex(of: "--freerdp-view"), idx + 1 < args.count {
+            guard let credentials = RDPTestCredentials.environment else {
+                FileHandle.standardError.write(Data("MSBX_RDP_PASSWORD is required for RDP test tools.\n".utf8))
+                exit(2)
+            }
             let parts = args[idx + 1].split(separator: ":")
             RDPViewTest.host = String(parts[0])
             RDPViewTest.port = parts.count > 1 ? Int(parts[1]) ?? 3389 : 3389
+            RDPViewTest.username = credentials.username
+            RDPViewTest.password = credentials.password
             // env for verifying feature gating (defaults if unset): MSBX_CLIPBOARD/MSBX_MIC/MSBX_PRINTER = 0|1
             let env = ProcessInfo.processInfo.environment
             if let v = env["MSBX_CLIPBOARD"] { RDPViewTest.clipboard = (v != "0") }
@@ -52,51 +59,58 @@ enum AppEntry {
             return
         }
         if let idx = args.firstIndex(of: "--freerdp-cliptest"), idx + 1 < args.count {
+            guard let credentials = RDPTestCredentials.environment else { exit(2) }
             let parts = args[idx + 1].split(separator: ":")
             let host = String(parts[0])
             let port = parts.count > 1 ? Int(parts[1]) ?? 3389 : 3389
-            let rc = cfreerdp_cliptest(host, Int32(port))
+            let rc = cfreerdp_cliptest(host, Int32(port), credentials.username, credentials.password)
             exit(rc)
         }
         if let idx = args.firstIndex(of: "--freerdp-filetest"), idx + 1 < args.count {
+            guard let credentials = RDPTestCredentials.environment else { exit(2) }
             let parts = args[idx + 1].split(separator: ":")
             let host = String(parts[0])
             let port = parts.count > 1 ? Int(parts[1]) ?? 3389 : 3389
-            let rc = cfreerdp_filetest(host, Int32(port))
+            let rc = cfreerdp_filetest(host, Int32(port), credentials.username, credentials.password)
             exit(rc)
         }
         if let idx = args.firstIndex(of: "--freerdp-filetest3"), idx + 1 < args.count {
+            guard let credentials = RDPTestCredentials.environment else { exit(2) }
             let parts = args[idx + 1].split(separator: ":")
             let host = String(parts[0])
             let port = parts.count > 1 ? Int(parts[1]) ?? 3389 : 3389
-            let rc = cfreerdp_filetest3(host, Int32(port))
+            let rc = cfreerdp_filetest3(host, Int32(port), credentials.username, credentials.password)
             exit(rc)
         }
         if let idx = args.firstIndex(of: "--freerdp-restest"), idx + 1 < args.count {
+            guard let credentials = RDPTestCredentials.environment else { exit(2) }
             let parts = args[idx + 1].split(separator: ":")
             let host = String(parts[0])
             let port = parts.count > 1 ? Int(parts[1]) ?? 3389 : 3389
-            let rc = cfreerdp_restest(host, Int32(port))
+            let rc = cfreerdp_restest(host, Int32(port), credentials.username, credentials.password)
             exit(rc)
         }
         if let idx = args.firstIndex(of: "--freerdp-filetest2"), idx + 1 < args.count {
+            guard let credentials = RDPTestCredentials.environment else { exit(2) }
             let parts = args[idx + 1].split(separator: ":")
             let host = String(parts[0])
             let port = parts.count > 1 ? Int(parts[1]) ?? 3389 : 3389
-            let rc = cfreerdp_filetest2(host, Int32(port))
+            let rc = cfreerdp_filetest2(host, Int32(port), credentials.username, credentials.password)
             exit(rc)
         }
         if let idx = args.firstIndex(of: "--freerdp-capture"), idx + 2 < args.count {
+            guard let credentials = RDPTestCredentials.environment else { exit(2) }
             let hostport = args[idx + 1]
             let out = args[idx + 2]
             let parts = hostport.split(separator: ":")
             let host = String(parts[0])
             let port = parts.count > 1 ? Int(parts[1]) ?? 3389 : 3389
             print("[MacSandbox] FreeRDP capture: \(host):\(port) → \(out)")
-            let rc = cfreerdp_capture(host, Int32(port), out)
+            let rc = cfreerdp_capture(host, Int32(port), credentials.username, credentials.password, out)
             print("[MacSandbox] result: rc=\(rc) (0=success)")
             exit(rc == 0 ? 0 : 1)
         }
+
         if let idx = args.firstIndex(of: "--headless-build") {
             let isoArg = (idx + 1 < args.count && !args[idx + 1].hasPrefix("-")) ? args[idx + 1] : nil
             HeadlessRunner.run(isoPathArg: isoArg)   // exit() internally
@@ -104,6 +118,17 @@ enum AppEntry {
             AppLaunch.shared.configure(from: args)
             MacSandboxGUIApp.main()
         }
+    }
+}
+
+private struct RDPTestCredentials {
+    let username: String
+    let password: String
+
+    static var environment: Self? {
+        let env = ProcessInfo.processInfo.environment
+        guard let password = env["MSBX_RDP_PASSWORD"], !password.isEmpty else { return nil }
+        return Self(username: env["MSBX_RDP_USERNAME"] ?? SandboxCreds.username, password: password)
     }
 }
 

@@ -13,11 +13,9 @@
 
 import Foundation
 
-/// Sandbox RDP credentials. The user never sees or types them (the client sends them automatically via the protocol),
-/// and a fixed internal password is used for reliable credential-based auto-logon (blank-password auto-logon is unstable).
+/// Sandbox RDP account. Its per-baseline password is stored in macOS Keychain.
 enum SandboxCreds {
     static let username = "WDAGUtilityAccount"
-    static let password = "Sandbox!2026"
 }
 
 /// Disposable sandbox run settings. Corresponds to the Windows Sandbox `.wsb` schema.

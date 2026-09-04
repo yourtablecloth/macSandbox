@@ -90,14 +90,14 @@ static void rt_on_text(void *ud, const char *utf8) {
     if (utf8) { strncpy(g_rt, utf8, sizeof(g_rt) - 1); g_rt_got = 1; }
 }
 
-int cfreerdp_filetest2(const char *host, int port) {
+int cfreerdp_filetest2(const char *host, int port, const char *username, const char *password) {
     g_rt_got = 0; g_rt[0] = 0;
     // create the host source file (no newline)
     const char *src = "/tmp/macwin-src.txt";
     FILE *sf = fopen(src, "wb");
     if (sf) { fputs("macToWin123", sf); fclose(sf); }
 
-    RDPEngine *e = rdp_engine_create(host, port, "WDAGUtilityAccount", "Sandbox!2026",
+    RDPEngine *e = rdp_engine_create(host, port, username, password,
                                      NULL, NULL, rt_on_text, NULL);
     if (!e) return 1;
     rdp_engine_start(e);
@@ -144,9 +144,9 @@ static int g_rw, g_rh;
 static void res_on_frame(void *ud, const uint8_t *bgrx, int w, int h, int stride) {
     (void)ud; (void)bgrx; (void)stride; g_rw = w; g_rh = h;
 }
-int cfreerdp_restest(const char *host, int port) {
+int cfreerdp_restest(const char *host, int port, const char *username, const char *password) {
     g_rw = 0; g_rh = 0;
-    RDPEngine *e = rdp_engine_create(host, port, "WDAGUtilityAccount", "Sandbox!2026",
+    RDPEngine *e = rdp_engine_create(host, port, username, password,
                                      res_on_frame, NULL, NULL, NULL);
     if (!e) return 1;
     rdp_engine_start(e);
@@ -164,14 +164,14 @@ int cfreerdp_restest(const char *host, int port) {
 }
 
 // ── Mac→Windows folder (including subfolders) round-trip check (b) ──
-int cfreerdp_filetest3(const char *host, int port) {
+int cfreerdp_filetest3(const char *host, int port, const char *username, const char *password) {
     g_rt_got = 0; g_rt[0] = 0;
     // create a folder structure on the host: /tmp/macwin-folder/sub/b.txt
     system("rm -rf /tmp/macwin-folder && mkdir -p /tmp/macwin-folder/sub");
     FILE *a = fopen("/tmp/macwin-folder/a.txt", "wb"); if (a) { fputs("topfile", a); fclose(a); }
     FILE *b = fopen("/tmp/macwin-folder/sub/b.txt", "wb"); if (b) { fputs("folderContent99", b); fclose(b); }
 
-    RDPEngine *e = rdp_engine_create(host, port, "WDAGUtilityAccount", "Sandbox!2026",
+    RDPEngine *e = rdp_engine_create(host, port, username, password,
                                      NULL, NULL, rt_on_text, NULL);
     if (!e) return 1;
     rdp_engine_start(e);
@@ -211,9 +211,9 @@ int cfreerdp_filetest3(const char *host, int port) {
     return ok ? 0 : 1;
 }
 
-int cfreerdp_filetest(const char *host, int port) {
+int cfreerdp_filetest(const char *host, int port, const char *username, const char *password) {
     g_got = 0; g_path[0] = 0;
-    RDPEngine *e = rdp_engine_create(host, port, "WDAGUtilityAccount", "Sandbox!2026",
+    RDPEngine *e = rdp_engine_create(host, port, username, password,
                                      NULL, NULL, NULL, NULL);
     if (!e) return 1;
     rdp_engine_set_files_callback(e, on_files);
