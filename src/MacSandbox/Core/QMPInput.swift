@@ -43,6 +43,19 @@ final class QMPInputInjector {
         let s = socket(AF_UNIX, SOCK_STREAM, 0)
         guard s >= 0 else { return false }
 
+        // QEMU can close the QMP socket between two console polling ticks when the guest
+        // powers off. A plain write(2) to that closed socket raises SIGPIPE and terminates
+        // the entire app before the baseline completion marker can be inspected. Keep the
+        // failure local to this socket so send(2) returns EPIPE instead.
+        var noSigPipe: Int32 = 1
+        guard setsockopt(
+            s, SOL_SOCKET, SO_NOSIGPIPE,
+            &noSigPipe, socklen_t(MemoryLayout<Int32>.size)
+        ) == 0 else {
+            Darwin.close(s)
+            return false
+        }
+
         var addr = sockaddr_un()
         addr.sun_family = sa_family_t(AF_UNIX)
         let pathBytes = socketPath.utf8CString
@@ -61,16 +74,20 @@ final class QMPInputInjector {
         if result != 0 { Darwin.close(s); return false }
 
         self.sock = s
-        _ = readResponse()                                  // QMP greeting
-        _ = sendRaw("{\"execute\":\"qmp_capabilities\"}\n") // enter command mode
-        _ = readResponse()
-        return true
+        guard !readResponse().isEmpty else { return false } // QMP greeting
+        guard sendRaw("{\"execute\":\"qmp_capabilities\"}\n") else { return false }
+        guard !readResponse().isEmpty else { return false }
+        return isConnected
     }
 
     var isConnected: Bool { sock >= 0 }
 
     func close() {
-        if sock >= 0 { Darwin.close(sock); sock = -1 }
+        guard sock >= 0 else { return }
+        let closingSocket = sock
+        sock = -1
+        _ = Darwin.shutdown(closingSocket, SHUT_RDWR)
+        Darwin.close(closingSocket)
     }
 
     // MARK: - Input events
@@ -114,15 +131,38 @@ final class QMPInputInjector {
     @discardableResult
     private func sendRaw(_ string: String) -> Bool {
         guard sock >= 0 else { return false }
-        return string.withCString { write(sock, $0, strlen($0)) > 0 }
+        let bytes = Array(string.utf8)
+        let sentAll = bytes.withUnsafeBytes { rawBuffer -> Bool in
+            guard let base = rawBuffer.baseAddress else { return true }
+            var offset = 0
+            while offset < rawBuffer.count {
+                let sent = Darwin.send(sock, base.advanced(by: offset), rawBuffer.count - offset, 0)
+                if sent > 0 {
+                    offset += sent
+                } else if sent < 0, errno == EINTR {
+                    continue
+                } else {
+                    return false
+                }
+            }
+            return true
+        }
+        if !sentAll { close() }
+        return sentAll
     }
 
     @discardableResult
     private func readResponse() -> String {
         guard sock >= 0 else { return "" }
         var buffer = [UInt8](repeating: 0, count: 4096)
-        let n = read(sock, &buffer, buffer.count)
-        if n <= 0 { return "" }
+        var n: Int
+        repeat {
+            n = Darwin.read(sock, &buffer, buffer.count)
+        } while n < 0 && errno == EINTR
+        if n <= 0 {
+            close()
+            return ""
+        }
         return String(bytes: buffer[0..<n], encoding: .utf8) ?? ""
     }
 }
