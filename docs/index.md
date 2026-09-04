@@ -69,6 +69,12 @@ See the [Help guide](help/) for day-to-day usage, the
 (`scripts/package_app.sh`) and command-line switches, and the
 [architecture guide](https://github.com/yourtablecloth/macSandbox/blob/main/ARCHITECTURE.md).
 
+## Development archives
+
+- [macOS guest sandbox experiment](archive/macos-guest-sandbox/): findings,
+  verification boundaries, and unresolved integration risks from a discontinued
+  Virtualization.framework branch
+
 ## Licensing
 
 Dual-licensed: **GNU AGPL-3.0-or-later** (open-source edition) or a
