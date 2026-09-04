@@ -80,9 +80,9 @@ static void combo(RDPEngine *e, int mod, int key) {
 #define MAC_CTRL 59
 #define MAC_RET 36
 
-int cfreerdp_cliptest(const char *host, int port) {
+int cfreerdp_cliptest(const char *host, int port, const char *username, const char *password) {
     g_got = 0; g_remote[0] = 0;
-    RDPEngine *e = rdp_engine_create(host, port, "WDAGUtilityAccount", "Sandbox!2026",
+    RDPEngine *e = rdp_engine_create(host, port, username, password,
                                      clip_on_frame, NULL, clip_on_text, NULL);
     if (!e) return 1;
     rdp_engine_start(e);

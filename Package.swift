@@ -37,6 +37,7 @@ let package = Package(
                 .copy("Terms")            // Per-language terms markdown (Terms/<lang>.md) — bundled at build time
             ],
             linkerSettings: [
+                .linkedFramework("Security"),
                 .unsafeFlags([
                     "-L\(brewLib)",
                     "-lfreerdp-client3", "-lfreerdp3", "-lwinpr3"

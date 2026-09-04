@@ -62,7 +62,18 @@ final class BaselineBuilder: ObservableObject {
         guard !isRunning else { return }
         isRunning = true
         logBuffer.clear()
-        defer { isRunning = false }
+        var credentialID: String?
+        var buildSucceeded = false
+        var provisioningArtifacts: [URL] = []
+        defer {
+            isRunning = false
+            for artifact in provisioningArtifacts {
+                try? FileManager.default.removeItem(at: artifact)
+            }
+            if !buildSucceeded, let credentialID {
+                BaselineCredentialStore.delete(id: credentialID)
+            }
+        }
 
         // Shared sink through which background stages (media build/download) hand logs to the main actor.
         // Snapshot weak self into a local let before passing it to a Task (referencing a mutable weak reference
@@ -85,15 +96,25 @@ final class BaselineBuilder: ObservableObject {
             // 1. Initialize the baseline directory (single-baseline policy: replace the existing one)
             updatePhase(.preparingDisk, L("build.detail.cleanup"))
             let baselineDir = SandboxPaths.baselineDir
+            let previousCredentialID = currentBaseline()?.credentialID
             if FileManager.default.fileExists(atPath: baselineDir.path) {
                 try FileManager.default.removeItem(at: baselineDir)
+            }
+            if let previousCredentialID {
+                BaselineCredentialStore.delete(id: previousCredentialID)
             }
             try FileManager.default.createDirectory(at: baselineDir, withIntermediateDirectories: true)
 
             let diskPath = SandboxPaths.baselineDiskPath.path
             let efiVarsPath = SandboxPaths.baselineEfiVarsPath.path
+            let newCredentialID = UUID().uuidString
+            let rdpPassword = try BaselineCredentialStore.generatePassword()
+            try BaselineCredentialStore.save(password: rdpPassword, id: newCredentialID)
+            credentialID = newCredentialID
 
             var meta = BaselineMetadata(
+                schemaVersion: BaselineMetadata.currentSchemaVersion,
+                credentialID: newCredentialID,
                 name: "Windows 11 ARM64",
                 diskPath: diskPath,
                 efiVarsPath: efiVarsPath,
@@ -124,9 +145,10 @@ final class BaselineBuilder: ObservableObject {
             //    leads to a run-loop stall (IMK mach port errors / unresponsive), so it must run in the background.
             updatePhase(.generatingUnattend, L("build.detail.media"))
             let bootDisk = baselineDir.appendingPathComponent("wpe-boot.img").path
+            provisioningArtifacts.append(URL(fileURLWithPath: bootDisk))
             let mediaInputs = WinPEDeployMediaBuilder.Inputs(
                 isoPath: config.isoPath, imageEdition: config.imageEdition,
-                pantherUnattendXML: unattend.generatePantherXML(config: config),
+                pantherUnattendXML: unattend.generatePantherXML(config: config, rdpPassword: rdpPassword),
                 bootDiskPath: bootDisk)
             try await Task.detached(priority: .userInitiated) {
                 try WinPEDeployMediaBuilder.build(mediaInputs, onLog: logSink)
@@ -144,6 +166,7 @@ final class BaselineBuilder: ObservableObject {
             // 5. Phase 1 — WinPE deployment (zero prompts/key input, fully deterministic)
             updatePhase(.installing, L("build.detail.phase1"))
             let efiVarsDeploy = baselineDir.appendingPathComponent("efi-vars-deploy.fd").path
+            provisioningArtifacts.append(URL(fileURLWithPath: efiVarsDeploy))
             try FileManager.default.copyItem(atPath: varsTemplate.path, toPath: efiVarsDeploy)
             let deployExit = try await runPhase(name: "deploy", headless: headless) { sock in
                 self.runtime.buildDeployArguments(
@@ -160,6 +183,8 @@ final class BaselineBuilder: ObservableObject {
             guard deployedSize >= 3_000_000_000 else {
                 throw BuildError.installFailed("Disk after deploy is only \(deployedSize / 1_000_000)MB — DISM apply may have failed.")
             }
+            try? FileManager.default.removeItem(atPath: bootDisk)
+            try? FileManager.default.removeItem(atPath: efiVarsDeploy)
 
             // 6. Phase 2 — first-boot configuration (specialize/oobe → shutdown after first logon)
             updatePhase(.installing, L("build.detail.phase2"))
@@ -178,11 +203,10 @@ final class BaselineBuilder: ObservableObject {
 
             // 7. Finalize
             updatePhase(.finalizing, L("build.detail.finalize"))
-            try? FileManager.default.removeItem(atPath: bootDisk)
-            try? FileManager.default.removeItem(atPath: efiVarsDeploy)
             meta.status = .ready
             meta.createdAt = Date()
             try saveMetadata(meta)
+            buildSucceeded = true
 
             updatePhase(.completed, L("build.detail.done"))
             appendLog("✅ Baseline created (fully deterministic WinPE DISM deployment)")
