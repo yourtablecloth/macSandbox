@@ -56,9 +56,12 @@ which the ARM64 inbox lacks — it is what makes RDP work at runtime. (Other ARM
    WinPE comes up with zero prompts or key presses and runs `deploy.cmd` → applies `dism` → `bcdboot` → shutdown (QEMU exit).
 2. **Phase 2 (OOBE)**: Boot from the NVMe alone (the firmware auto-boots the ESP's `\EFI\BOOT\BOOTAA64.EFI`).
    `\Windows\Panther\unattend.xml` (oobeSystem-only) automates the first boot:
-   bootstrap admin auto-logon → FirstLogonCommands enable the built-in **WDAGUtilityAccount** +
-   set up permanent auto-logon + **enable the RDP server** (`fDenyTSConnections=0`, NLA off, `LimitBlankPasswordUse=0`,
+   bootstrap admin auto-logon → FirstLogonCommands enable the built-in **WDAGUtilityAccount**, set its RDP credential,
+   disable password expiration for that account, and **enable the RDP server** (`fDenyTSConnections=0`, NLA off, `LimitBlankPasswordUse=0`,
    allow the firewall remote-desktop group) + configure the logon agent (Run key) → `shutdown` → baseline complete (status=ready).
+
+   The final shutdown is gated on successful application of `PasswordNeverExpires`; if that account-specific setting fails,
+   provisioning remains visibly failed instead of saving a baseline with an expiring credential.
 
 > The Panther unattend uses only the oobeSystem pass. Adding a `Microsoft-Windows-Deployment`
 > RunSynchronous to specialize causes some 25H2 builds to reject it as "the answer file is invalid".
