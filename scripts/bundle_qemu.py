@@ -38,6 +38,9 @@ PROJECT_DIR = SCRIPT_DIR.parent
 VENDOR_DIR = PROJECT_DIR / "vendor" / "qemu"
 DEFAULT_LOCKFILE = SCRIPT_DIR / "qemu-bottles.lock.json"
 CACHE_DIR = PROJECT_DIR / ".bottle-cache"
+CUSTOM_FIRMWARE_DIR = PROJECT_DIR / ".build" / "firmware"
+CUSTOM_FIRMWARE = CUSTOM_FIRMWARE_DIR / "edk2-aarch64-code.fd"
+CUSTOM_FIRMWARE_MANIFEST = CUSTOM_FIRMWARE_DIR / "macsandbox-firmware.json"
 
 # GHCR (GitHub Container Registry) URL pattern
 GHCR_BASE = "https://ghcr.io/v2/homebrew/core"
@@ -322,6 +325,44 @@ def collect_files(cellar_dir: Path, vendor_dir: Path) -> None:
     log(f"lib: {len(collected)} dylibs collected", indent=1)
 
 
+def install_custom_firmware(vendor_dir: Path, qemu_version: str, *, required: bool) -> bool:
+    """Replace the stock AArch64 EDK II image with the MacSandbox build."""
+    if not CUSTOM_FIRMWARE.exists() or not CUSTOM_FIRMWARE_MANIFEST.exists():
+        message = (
+            "custom EDK II firmware is missing. Run scripts/build_firmware.sh first."
+        )
+        if required:
+            sys.exit(f"Error: {message}")
+        log(f"Warning: {message}", indent=1)
+        return False
+
+    try:
+        with open(CUSTOM_FIRMWARE_MANIFEST) as f:
+            manifest = json.load(f)
+    except (OSError, json.JSONDecodeError) as exc:
+        sys.exit(f"Error: invalid custom firmware manifest — {exc}")
+
+    if manifest.get("qemu_tag") != f"v{qemu_version}":
+        sys.exit(
+            "Error: custom firmware was built for "
+            f"{manifest.get('qemu_tag')}, but bundled QEMU is v{qemu_version}"
+        )
+    if CUSTOM_FIRMWARE.stat().st_size != 64 * 1024 * 1024:
+        sys.exit("Error: custom AArch64 firmware must be exactly 64 MiB")
+
+    actual_sha256 = sha256_file(CUSTOM_FIRMWARE)
+    if actual_sha256 != manifest.get("sha256"):
+        sys.exit("Error: custom firmware SHA-256 does not match its manifest")
+
+    share_dir = vendor_dir / "share" / "qemu"
+    if not share_dir.exists():
+        sys.exit(f"Error: QEMU share directory is missing — {share_dir}")
+    shutil.copy2(CUSTOM_FIRMWARE, share_dir / CUSTOM_FIRMWARE.name)
+    shutil.copy2(CUSTOM_FIRMWARE_MANIFEST, share_dir / CUSTOM_FIRMWARE_MANIFEST.name)
+    log(f"firmware: MacSandbox EDK II ({actual_sha256[:12]}…)", indent=1)
+    return True
+
+
 # ---------------------------------------------------------------------------
 # Rewriting dylib paths
 # ---------------------------------------------------------------------------
@@ -548,6 +589,10 @@ def main() -> None:
         "--fallback-brew", action="store_true",
         help="use brew fetch as a fallback when a bottle cannot be found on GHCR",
     )
+    parser.add_argument(
+        "--require-custom-firmware", action="store_true",
+        help="fail unless the MacSandbox EDK II build is available and valid",
+    )
     args = parser.parse_args()
 
     # Architecture check
@@ -573,6 +618,9 @@ def main() -> None:
         # Validation only
         qemu_bin = VENDOR_DIR / "bin" / "qemu-system-x86_64"
         if qemu_bin.exists():
+            install_custom_firmware(
+                VENDOR_DIR, qemu_ver, required=args.require_custom_firmware
+            )
             log("An existing bundle is present. Use --force to rebuild.")
             return
     elif VENDOR_DIR.exists() and args.force:
@@ -603,6 +651,9 @@ def main() -> None:
         log("[2/4] Copying binaries and libraries...")
         VENDOR_DIR.mkdir(parents=True, exist_ok=True)
         collect_files(cellar_dir, VENDOR_DIR)
+        install_custom_firmware(
+            VENDOR_DIR, qemu_ver, required=args.require_custom_firmware
+        )
 
         # --- Step 3: rewrite dylib paths ---
         log("")

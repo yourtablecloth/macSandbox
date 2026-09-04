@@ -26,6 +26,12 @@ IDENTITY="${DEVELOPER_ID:--}"            # default ad-hoc ("-")
 DIST="dist"; APP="$DIST/$APP_NAME.app"; C="$APP/Contents"
 ENT_APP="scripts/app.entitlements"     # disable-library-validation
 ENT_QEMU="scripts/qemu.entitlements"   # hypervisor + disable-library-validation
+FIRMWARE_MANIFEST="vendor/qemu/share/qemu/macsandbox-firmware.json"
+
+if [ ! -f "$FIRMWARE_MANIFEST" ]; then
+  echo "Error: branded EDK II firmware is missing. Run scripts/build_firmware.sh and bundle QEMU again." >&2
+  exit 1
+fi
 
 sign() { codesign --force --timestamp --options runtime -s "$IDENTITY" "$@"; }
 

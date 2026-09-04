@@ -24,7 +24,29 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  firmware:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install EDK II build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            acpica-tools build-essential gcc-aarch64-linux-gnu git nasm python3 uuid-dev
+
+      - name: Build branded EDK II firmware
+        run: scripts/build_firmware.sh --native
+
+      - name: Upload firmware artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macsandbox-edk2
+          path: .build/firmware/
+          if-no-files-found: error
+
   build:
+    needs: firmware
     # Standard Apple Silicon (arm64) runner — free for public repositories.
     # Matches the arm64_sonoma bottles (scripts/qemu-bottles.lock.json) and LSMinimumSystemVersion 14.0.
     runs-on: macos-14
@@ -55,8 +77,14 @@ jobs:
       - name: Install build dependencies (FreeRDP, wimlib)
         run: brew install freerdp wimlib
 
+      - name: Download branded EDK II firmware
+        uses: actions/download-artifact@v4
+        with:
+          name: macsandbox-edk2
+          path: .build/firmware
+
       - name: Bundle vendor QEMU
-        run: python3 scripts/bundle_qemu.py --force --fallback-brew
+        run: python3 scripts/bundle_qemu.py --force --fallback-brew --require-custom-firmware
 
       - name: Import signing certificate
         if: env.MACOS_CERT_P12 != ''
@@ -82,6 +110,11 @@ jobs:
           VERSION: ${{ steps.ver.outputs.version }}
           DEVELOPER_ID: ${{ env.MACOS_DEVELOPER_ID }}   # if empty, package_app.sh uses ad-hoc
         run: scripts/package_app.sh
+
+      - name: Verify DMG integrity
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: hdiutil verify "dist/macSandbox-for-Windows-$VERSION.dmg"
 
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v4

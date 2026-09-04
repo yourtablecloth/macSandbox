@@ -84,8 +84,14 @@ open it, and drag **macSandbox for Windows** into **Applications**.
 # Install source-build dependencies
 brew install freerdp wimlib
 
-# Prepare vendored QEMU (provides qemu-img, firmware, and shared libraries)
-python3 scripts/bundle_qemu.py
+# Generate the app icon and the matching 24-bit UEFI boot logo
+swift scripts/make_assets.swift
+
+# Build the branded EDK II firmware (uses Docker, Podman, or Apple container on macOS)
+scripts/build_firmware.sh
+
+# Prepare vendored QEMU and install the verified custom firmware
+python3 scripts/bundle_qemu.py --require-custom-firmware
 
 # Development build (re-signs vendored QEMU for -accel hvf, then builds)
 scripts/build.sh
@@ -99,6 +105,10 @@ scripts/package_app.sh
 needs `qemu-img`, and guest boot uses `-accel hvf`, which requires the QEMU binary to be
 signed with the `com.apple.security.hypervisor` entitlement. `scripts/build.sh` applies that
 signing to `vendor/qemu/bin/qemu-system-aarch64`.
+
+The EDK II source pin, boot-screen changes, and diagnostic tradeoffs are documented in
+[`firmware/README.md`](firmware/README.md). The firmware keeps serial diagnostics while
+hiding its graphical progress bar and `BdsDxe` boot-option messages.
 
 On first launch the app asks for your Windows 11 ARM64 ISO and builds the
 baseline image unattended (one round, typically 20–40 minutes). After that,
