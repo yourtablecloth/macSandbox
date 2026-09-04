@@ -193,14 +193,31 @@ final class BaselineBuilder: ObservableObject {
             let efiVarsOobe = SandboxPaths.baselineEfiVarsPath.path
             if FileManager.default.fileExists(atPath: efiVarsOobe) { try FileManager.default.removeItem(atPath: efiVarsOobe) }
             try FileManager.default.copyItem(atPath: varsTemplate.path, toPath: efiVarsOobe)
+            let completionDisk = baselineDir.appendingPathComponent("oobe-status.img").path
+            provisioningArtifacts.append(URL(fileURLWithPath: completionDisk))
+            try await Task.detached(priority: .userInitiated) {
+                try BuildCompletionDisk.create(at: completionDisk)
+            }.value
             let oobeExit = try await runPhase(name: "oobe", headless: headless) { sock in
                 self.runtime.buildOobeArguments(
-                    nvmePath: diskPath, efiCodePath: efiCode.path, efiVarsPath: efiVarsOobe,
+                    nvmePath: diskPath, completionDiskPath: completionDisk,
+                    efiCodePath: efiCode.path, efiVarsPath: efiVarsOobe,
                     cpuCores: config.cpuCores, memoryMB: config.memoryMB,
                     qmpSocketPath: sock, serialLogPath: serialLog)
             }
             guard oobeExit == 0 else {
                 throw BuildError.installFailed("OOBE phase exited abnormally (exit=\(oobeExit)).")
+            }
+            let completion = try await Task.detached(priority: .userInitiated) {
+                try BuildCompletionDisk.inspect(at: completionDisk)
+            }.value
+            switch completion {
+            case .success:
+                appendLog("Guest provisioning completion marker verified")
+            case .failure(let reason):
+                throw BuildError.installFailed("Windows provisioning failed: \(reason)")
+            case .missing:
+                throw BuildError.installFailed("Windows stopped without reporting successful baseline provisioning.")
             }
 
             // 7. Finalize

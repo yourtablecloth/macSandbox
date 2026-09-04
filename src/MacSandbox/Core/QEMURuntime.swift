@@ -148,16 +148,18 @@ final class QEMURuntime {
     /// Phase 2 (OOBE): boot from the deployed NVMe alone → specialize/oobe → shutdown after first logon.
     /// The firmware auto-boots \\EFI\\BOOT\\BOOTAA64.EFI on the NVMe ESP (=bootmgfw, copied during deployment).
     func buildOobeArguments(
-        nvmePath: String, efiCodePath: String, efiVarsPath: String,
+        nvmePath: String, completionDiskPath: String, efiCodePath: String, efiVarsPath: String,
         cpuCores: Int, memoryMB: Int, qmpSocketPath: String, serialLogPath: String? = nil
     ) -> [String] {
         var args = baseArguments(name: "MacSandbox-OOBE", efiCodePath: efiCodePath, efiVarsPath: efiVarsPath,
                                  cpuCores: cpuCores, memoryMB: memoryMB, qmpSocketPath: qmpSocketPath, serialLogPath: serialLogPath)
         args += ["-drive", "if=none,id=sysdisk,format=qcow2,file=\(nvmePath)"]
-        args += ["-device", "nvme,drive=sysdisk,serial=s0"]
+        args += ["-device", "nvme,drive=sysdisk,serial=s0,bootindex=0"]
         args += ["-device", "qemu-xhci,id=usb"]
         args += ["-device", "usb-kbd"]
         args += ["-device", "usb-tablet"]
+        args += ["-drive", "if=none,id=oobestatus,format=raw,file=\(completionDiskPath)"]
+        args += ["-device", "usb-storage,drive=oobestatus,removable=on"]
         return args
     }
 

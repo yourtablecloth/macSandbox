@@ -104,49 +104,74 @@ final class UnattendBuilder {
     func generateProvisioningPowerShell(rdpPassword: String) -> String {
         #"""
         $ErrorActionPreference = 'Stop'
-        $account = 'WDAGUtilityAccount'
-        $winlogon = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
+        $statusRoot = $null
+        try {
+            $deadline = (Get-Date).AddMinutes(2)
+            do {
+                $statusVolume = Get-Volume -ErrorAction SilentlyContinue |
+                    Where-Object { $_.FileSystemLabel -eq '\#(BuildCompletionDisk.volumeLabel)' -and $_.DriveLetter } |
+                    Select-Object -First 1
+                if ($null -eq $statusVolume) { Start-Sleep -Seconds 1 }
+            } while ($null -eq $statusVolume -and (Get-Date) -lt $deadline)
+            if ($null -eq $statusVolume) { throw 'Could not find the host completion disk.' }
+            $statusRoot = '{0}:\' -f $statusVolume.DriveLetter
 
-        & net.exe user $account /active:yes
-        if ($LASTEXITCODE -ne 0) { throw 'Could not enable WDAGUtilityAccount.' }
-        & net.exe user $account '\#(rdpPassword)'
-        if ($LASTEXITCODE -ne 0) { throw 'Could not set the WDAGUtilityAccount password.' }
+            $account = 'WDAGUtilityAccount'
+            $winlogon = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
 
-        $accountObject = Get-LocalUser -Name $account
-        Set-LocalUser -InputObject $accountObject -PasswordNeverExpires $true
-        $adminGroup = ([System.Security.Principal.SecurityIdentifier]'S-1-5-32-544').Translate([System.Security.Principal.NTAccount]).Value.Split('\\')[-1]
-        $adminMembers = Get-LocalGroupMember -Group $adminGroup
-        if ($adminMembers.SID.Value -notcontains $accountObject.SID.Value) {
-            Add-LocalGroupMember -Group $adminGroup -Member $account
+            & net.exe user $account /active:yes
+            if ($LASTEXITCODE -ne 0) { throw 'Could not enable WDAGUtilityAccount.' }
+            & net.exe user $account '\#(rdpPassword)'
+            if ($LASTEXITCODE -ne 0) { throw 'Could not set the WDAGUtilityAccount password.' }
+
+            $accountObject = Get-LocalUser -Name $account
+            Set-LocalUser -InputObject $accountObject -PasswordNeverExpires $true
+            $adminGroup = ([System.Security.Principal.SecurityIdentifier]'S-1-5-32-544').Translate([System.Security.Principal.NTAccount]).Value.Split('\')[-1]
+            $adminMembers = Get-LocalGroupMember -Group $adminGroup
+            if ($adminMembers.SID.Value -notcontains $accountObject.SID.Value) {
+                Add-LocalGroupMember -Group $adminGroup -Member $account
+            }
+
+            New-ItemProperty -Path $winlogon -Name AutoAdminLogon -PropertyType String -Value '0' -Force | Out-Null
+            Remove-ItemProperty -LiteralPath $winlogon -Name AutoLogonCount -ErrorAction SilentlyContinue
+            Remove-ItemProperty -LiteralPath $winlogon -Name DefaultPassword -ErrorAction SilentlyContinue
+            New-ItemProperty -Path $winlogon -Name DisableAutomaticRestartSignOn -PropertyType DWord -Value 1 -Force | Out-Null
+
+            $terminalServer = 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server'
+            New-ItemProperty -Path $terminalServer -Name fDenyTSConnections -PropertyType DWord -Value 0 -Force | Out-Null
+            New-ItemProperty -Path "$terminalServer\WinStations\RDP-Tcp" -Name UserAuthentication -PropertyType DWord -Value 0 -Force | Out-Null
+            New-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' -Name LimitBlankPasswordUse -PropertyType DWord -Value 0 -Force | Out-Null
+
+            Get-NetFirewallRule -Name MacSandboxRDP -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+            New-NetFirewallRule -Name MacSandboxRDP -DisplayName MacSandboxRDP -Direction Inbound -Action Allow -Protocol TCP -LocalPort 3389 -Profile Any | Out-Null
+
+            $runKey = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run'
+            $logonAgent = 'cmd /c for %d in (D E F G H I) do if exist %d:\macsandbox-logon.vbs start wscript //B %d:\macsandbox-logon.vbs'
+            New-ItemProperty -Path $runKey -Name MacSandboxLogon -PropertyType String -Value $logonAgent -Force | Out-Null
+
+            $appModelUnlock = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock'
+            New-Item -Path $appModelUnlock -Force | Out-Null
+            New-ItemProperty -Path $appModelUnlock -Name AllowDevelopmentWithoutDevLicense -PropertyType DWord -Value 1 -Force | Out-Null
+
+            & net.exe user sandboxsetup /active:no
+            if ($LASTEXITCODE -ne 0) { throw 'Could not disable the bootstrap account.' }
+
+            Remove-Item -LiteralPath "$env:WINDIR\Panther\unattend.xml" -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $PSCommandPath -Force
+            Set-Content -LiteralPath (Join-Path $statusRoot '\#(BuildCompletionDisk.successFileName)') -Value '\#(BuildCompletionDisk.successToken)' -Encoding Ascii
+            shutdown.exe /s /t 15 /f
+        } catch {
+            $failure = $_.Exception.Message
+            if ($null -ne $statusRoot) {
+                try {
+                    Set-Content -LiteralPath (Join-Path $statusRoot '\#(BuildCompletionDisk.failureFileName)') -Value $failure -Encoding Ascii
+                } catch {}
+            }
+            Remove-Item -LiteralPath "$env:WINDIR\Panther\unattend.xml" -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
+            shutdown.exe /s /t 15 /f
+            exit 1
         }
-
-        New-ItemProperty -Path $winlogon -Name AutoAdminLogon -PropertyType String -Value '0' -Force | Out-Null
-        Remove-ItemProperty -LiteralPath $winlogon -Name AutoLogonCount -ErrorAction SilentlyContinue
-        Remove-ItemProperty -LiteralPath $winlogon -Name DefaultPassword -ErrorAction SilentlyContinue
-        New-ItemProperty -Path $winlogon -Name DisableAutomaticRestartSignOn -PropertyType DWord -Value 1 -Force | Out-Null
-
-        $terminalServer = 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server'
-        New-ItemProperty -Path $terminalServer -Name fDenyTSConnections -PropertyType DWord -Value 0 -Force | Out-Null
-        New-ItemProperty -Path "$terminalServer\WinStations\RDP-Tcp" -Name UserAuthentication -PropertyType DWord -Value 0 -Force | Out-Null
-        New-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' -Name LimitBlankPasswordUse -PropertyType DWord -Value 0 -Force | Out-Null
-
-        Get-NetFirewallRule -Name MacSandboxRDP -ErrorAction SilentlyContinue | Remove-NetFirewallRule
-        New-NetFirewallRule -Name MacSandboxRDP -DisplayName MacSandboxRDP -Direction Inbound -Action Allow -Protocol TCP -LocalPort 3389 -Profile Any | Out-Null
-
-        $runKey = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run'
-        $logonAgent = 'cmd /c for %d in (D E F G H I) do if exist %d:\macsandbox-logon.vbs start wscript //B %d:\macsandbox-logon.vbs'
-        New-ItemProperty -Path $runKey -Name MacSandboxLogon -PropertyType String -Value $logonAgent -Force | Out-Null
-
-        $appModelUnlock = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock'
-        New-Item -Path $appModelUnlock -Force | Out-Null
-        New-ItemProperty -Path $appModelUnlock -Name AllowDevelopmentWithoutDevLicense -PropertyType DWord -Value 1 -Force | Out-Null
-
-        & net.exe user sandboxsetup /active:no
-        if ($LASTEXITCODE -ne 0) { throw 'Could not disable the bootstrap account.' }
-
-        Remove-Item -LiteralPath "$env:WINDIR\Panther\unattend.xml" -Force -ErrorAction SilentlyContinue
-        Remove-Item -LiteralPath $PSCommandPath -Force
-        shutdown.exe /s /t 15 /f
         """#
     }
 

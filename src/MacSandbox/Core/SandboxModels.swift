@@ -27,7 +27,7 @@ struct InstallConfig {
 
 /// Single baseline metadata (saved as metadata.json)
 struct BaselineMetadata: Codable {
-    static let currentSchemaVersion = 2
+    static let currentSchemaVersion = 3
 
     var schemaVersion: Int
     var credentialID: String
