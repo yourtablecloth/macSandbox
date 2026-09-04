@@ -45,6 +45,7 @@ enum WinPEDeployMediaBuilder {
         var isoPath: String
         var imageEdition: String          // dism /Name (e.g. "Windows 11 Pro")
         var pantherUnattendXML: String    // specialize/oobe answer to be copied to W:\Windows\Panther\unattend.xml after deployment
+        var provisioningPowerShell: String // first-logon script copied to C:\ProgramData\MacSandbox\Provision.ps1
         var bootDiskPath: String          // path of the GPT FAT32 disk image to create
     }
 
@@ -91,16 +92,19 @@ enum WinPEDeployMediaBuilder {
         let winpeshl = work.appendingPathComponent("winpeshl.ini")
         let diskpartTxt = work.appendingPathComponent("msbx-dp.txt")
         let pantherXml = work.appendingPathComponent("unattend.xml")
+        let provisionPS1 = work.appendingPathComponent("provision.ps1")
         try deployCmdContent(imageEdition: inputs.imageEdition).write(to: deployCmd, atomically: true, encoding: .utf8)
         try winpeshlContent().write(to: winpeshl, atomically: true, encoding: .utf8)
         try diskpartScript().write(to: diskpartTxt, atomically: true, encoding: .utf8)
         try inputs.pantherUnattendXML.write(to: pantherXml, atomically: true, encoding: .utf8)
+        try inputs.provisioningPowerShell.write(to: provisionPS1, atomically: true, encoding: .utf8)
 
         let updateCommands = """
         add \(deployCmd.path) /Windows/System32/deploy.cmd
         add \(winpeshl.path) /Windows/System32/winpeshl.ini
         add \(diskpartTxt.path) /Windows/System32/msbx-dp.txt
         add \(pantherXml.path) /unattend.xml
+        add \(provisionPS1.path) /provision.ps1
         """
         try runWithStdin(wimlib.path, ["update", editedWim, "2"], stdin: updateCommands)
 
@@ -213,6 +217,8 @@ enum WinPEDeployMediaBuilder {
             "for /f \"tokens=3\" %%P in ('dism /English /Image:W:\\ /Get-ProvisionedAppxPackages ^| findstr /b /c:\"PackageName\" ^| findstr /i \"\(removeFilter)\"') do dism /Image:W:\\ /Remove-ProvisionedAppxPackage /PackageName:%%P",
             "md W:\\Windows\\Panther",
             "copy /Y X:\\unattend.xml W:\\Windows\\Panther\\unattend.xml",
+            "md W:\\ProgramData\\MacSandbox",
+            "copy /Y X:\\provision.ps1 W:\\ProgramData\\MacSandbox\\Provision.ps1",
             "bcdboot W:\\Windows /s S: /f UEFI",
             "copy /Y W:\\Windows\\Boot\\EFI\\bootmgfw.efi S:\\EFI\\BOOT\\BOOTAA64.EFI",
             "wpeutil shutdown"

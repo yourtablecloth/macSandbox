@@ -43,6 +43,11 @@ let package = Package(
                     "-lfreerdp-client3", "-lfreerdp3", "-lwinpr3"
                 ])
             ]
+        ),
+        .testTarget(
+            name: "MacSandboxTests",
+            dependencies: ["MacSandbox"],
+            path: "Tests/MacSandboxTests"
         )
     ]
 )

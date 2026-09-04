@@ -146,9 +146,11 @@ final class BaselineBuilder: ObservableObject {
             updatePhase(.generatingUnattend, L("build.detail.media"))
             let bootDisk = baselineDir.appendingPathComponent("wpe-boot.img").path
             provisioningArtifacts.append(URL(fileURLWithPath: bootDisk))
+            let pantherXML = try unattend.generatePantherXML(config: config)
             let mediaInputs = WinPEDeployMediaBuilder.Inputs(
                 isoPath: config.isoPath, imageEdition: config.imageEdition,
-                pantherUnattendXML: unattend.generatePantherXML(config: config, rdpPassword: rdpPassword),
+                pantherUnattendXML: pantherXML,
+                provisioningPowerShell: unattend.generateProvisioningPowerShell(rdpPassword: rdpPassword),
                 bootDiskPath: bootDisk)
             try await Task.detached(priority: .userInitiated) {
                 try WinPEDeployMediaBuilder.build(mediaInputs, onLog: logSink)
