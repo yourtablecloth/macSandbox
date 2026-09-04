@@ -100,6 +100,11 @@ From the **Sandbox** menu or the *ended* screen:
 - **Destroy Base Image…** — permanently deletes the baseline. You'll need to
   build a new one before using the sandbox again.
 
+Baseline provisioning improvements do not modify an existing base image. After
+upgrading macSandbox, rebuild the baseline to apply the current account and
+system configuration. In particular, baselines created before password
+expiration was disabled for `WDAGUtilityAccount` must be rebuilt.
+
 ## Troubleshooting
 
 - **Build fails immediately with a disk‑space error** — free up space; the

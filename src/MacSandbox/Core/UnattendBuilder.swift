@@ -32,7 +32,15 @@ final class UnattendBuilder {
     func generatePantherXML(config: InstallConfig, rdpPassword: String) -> String {
         let locale = config.locale
         let winlogon = "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon"
-        let passwordCommand = "net user WDAGUtilityAccount \(rdpPassword)"
+        let accountReadyMarker = "C:\\ProgramData\\MacSandbox-WDAGUtilityAccount.ready"
+        let accountSetupCommand = """
+        $ErrorActionPreference = 'Stop'
+        & net.exe user WDAGUtilityAccount \(rdpPassword)
+        if ($LASTEXITCODE -ne 0) { throw 'Could not set the WDAGUtilityAccount password.' }
+        Set-LocalUser -Name 'WDAGUtilityAccount' -PasswordNeverExpires $true
+        Set-Content -LiteralPath '\(accountReadyMarker)' -Value 'ready' -Encoding Ascii
+        """
+        let encodedAccountSetupCommand = accountSetupCommand
             .data(using: .utf16LittleEndian)!.base64EncodedString()
         return """
         <?xml version="1.0" encoding="utf-8"?>
@@ -86,83 +94,78 @@ final class UnattendBuilder {
                         </SynchronousCommand>
                         <SynchronousCommand wcm:action="add">
                             <Order>2</Order>
-                            <CommandLine>powershell -NoProfile -EncodedCommand \(passwordCommand)</CommandLine>
-                            <Description>set baseline RDP password</Description>
+                            <CommandLine>%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoLogo -NoProfile -NonInteractive -EncodedCommand \(encodedAccountSetupCommand)</CommandLine>
+                            <Description>set the internal RDP password, disable password expiration for the application-managed account, and mark the account configuration ready</Description>
                         </SynchronousCommand>
                         <SynchronousCommand wcm:action="add">
                             <Order>3</Order>
-                            <CommandLine>cmd /c net accounts /maxpwage:unlimited</CommandLine>
-                            <Description>prevent the sandbox account password from expiring</Description>
-                        </SynchronousCommand>
-                        <SynchronousCommand wcm:action="add">
-                            <Order>4</Order>
                             <CommandLine>cmd /c net localgroup Administrators WDAGUtilityAccount /add</CommandLine>
                             <Description>admin</Description>
                         </SynchronousCommand>
                         <SynchronousCommand wcm:action="add">
-                            <Order>5</Order>
+                            <Order>4</Order>
                             <CommandLine>reg add "\(winlogon)" /v AutoAdminLogon /t REG_SZ /d 0 /f</CommandLine>
                             <Description>disable console autologon — RDP(WDAGUtilityAccount) is the sole interactive session; console autologon would race it on single-session client SKU</Description>
                         </SynchronousCommand>
                         <SynchronousCommand wcm:action="add">
-                            <Order>6</Order>
+                            <Order>5</Order>
                             <CommandLine>reg delete "\(winlogon)" /v AutoLogonCount /f</CommandLine>
                             <Description>remove unattend LogonCount leftover (would re-trigger console autologon)</Description>
                         </SynchronousCommand>
                         <SynchronousCommand wcm:action="add">
-                            <Order>7</Order>
+                            <Order>6</Order>
                             <CommandLine>reg delete "\(winlogon)" /v DefaultPassword /f</CommandLine>
                             <Description>clear stored autologon credential</Description>
                         </SynchronousCommand>
                         <SynchronousCommand wcm:action="add">
-                            <Order>8</Order>
+                            <Order>7</Order>
                             <CommandLine>reg add "\(winlogon)" /v DisableAutomaticRestartSignOn /t REG_DWORD /d 1 /f</CommandLine>
                             <Description>disable ARSO so a guest reboot does not auto-restore a console session that would race RDP</Description>
                         </SynchronousCommand>
                         <SynchronousCommand wcm:action="add">
-                            <Order>9</Order>
+                            <Order>8</Order>
                             <CommandLine>reg add "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Terminal Server" /v fDenyTSConnections /t REG_DWORD /d 0 /f</CommandLine>
                             <Description>enable RDP server</Description>
                         </SynchronousCommand>
                         <SynchronousCommand wcm:action="add">
-                            <Order>10</Order>
+                            <Order>9</Order>
                             <CommandLine>reg add "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Terminal Server\\WinStations\\RDP-Tcp" /v UserAuthentication /t REG_DWORD /d 0 /f</CommandLine>
                             <Description>disable NLA for embedded RDP</Description>
                         </SynchronousCommand>
                         <SynchronousCommand wcm:action="add">
-                            <Order>11</Order>
+                            <Order>10</Order>
                             <CommandLine>reg add "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa" /v LimitBlankPasswordUse /t REG_DWORD /d 0 /f</CommandLine>
                             <Description>configure RDP password policy</Description>
                         </SynchronousCommand>
                         <SynchronousCommand wcm:action="add">
-                            <Order>12</Order>
+                            <Order>11</Order>
                             <CommandLine>netsh advfirewall firewall add rule name=MacSandboxRDP dir=in action=allow protocol=TCP localport=3389 profile=any</CommandLine>
                             <Description>allow inbound TCP 3389 on all profiles (locale-independent; group= fails on localized Windows)</Description>
                         </SynchronousCommand>
                         <SynchronousCommand wcm:action="add">
-                            <Order>13</Order>
+                            <Order>12</Order>
                             <CommandLine>reg add "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run" /v MacSandboxLogon /t REG_SZ /d "cmd /c for %d in (D E F G H I) do if exist %d:\\macsandbox-logon.vbs start wscript //B %d:\\macsandbox-logon.vbs" /f</CommandLine>
                             <Description>logon agent: runs sandbox LogonCommand from config disk via a hidden VBScript launcher (no visible console window, like Windows Sandbox). 'start' detaches wscript so this cmd exits immediately; wscript runs the .cmd with window style 0 (SW_HIDE).</Description>
                         </SynchronousCommand>
                         <SynchronousCommand wcm:action="add">
-                            <Order>14</Order>
+                            <Order>13</Order>
                             <CommandLine>reg add "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\AppModelUnlock" /v AllowDevelopmentWithoutDevLicense /t REG_DWORD /d 1 /f</CommandLine>
                             <Description>enable Developer Mode so non-elevated logon agent can create symlinks (mapped folder Desktop mount); falls back to .lnk shortcut otherwise</Description>
                         </SynchronousCommand>
                         <SynchronousCommand wcm:action="add">
-                            <Order>15</Order>
+                            <Order>14</Order>
                             <CommandLine>cmd /c net user sandboxsetup /active:no</CommandLine>
                             <Description>disable bootstrap account so it cannot console-autologon (AutoAdminLogon=0 alone does not stop the OOBE first-boot autologon; disabling the account does). RDP(WDAGUtilityAccount) becomes the sole session.</Description>
                         </SynchronousCommand>
                         <SynchronousCommand wcm:action="add">
-                            <Order>16</Order>
+                            <Order>15</Order>
                             <CommandLine>cmd /c del /f /q %WINDIR%\\Panther\\unattend.xml</CommandLine>
                             <Description>remove provisioning answer file</Description>
                         </SynchronousCommand>
                         <SynchronousCommand wcm:action="add">
-                            <Order>17</Order>
-                            <CommandLine>cmd /c shutdown /s /t 15 /f</CommandLine>
-                            <Description>shutdown to finalize baseline</Description>
+                            <Order>16</Order>
+                            <CommandLine>%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoLogo -NoProfile -NonInteractive -Command "$deadline = (Get-Date).AddMinutes(5); while (-not (Test-Path -LiteralPath '\(accountReadyMarker)') -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 1 }; if (-not (Test-Path -LiteralPath '\(accountReadyMarker)')) { Write-Error 'Baseline provisioning failed: the WDAGUtilityAccount password or PasswordNeverExpires setting could not be applied.'; Start-Sleep -Seconds 86400; exit 1 }; Remove-Item -LiteralPath '\(accountReadyMarker)' -Force; shutdown.exe /s /t 15 /f"</CommandLine>
+                            <Description>wait for account provisioning, report a visible failure if it did not complete, or shutdown to finalize the baseline</Description>
                         </SynchronousCommand>
                     </FirstLogonCommands>
                 </component>
