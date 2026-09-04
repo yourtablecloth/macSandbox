@@ -86,6 +86,9 @@ jobs:
       - name: Bundle vendor QEMU
         run: python3 scripts/bundle_qemu.py --force --fallback-brew --require-custom-firmware
 
+      - name: Run regression tests
+        run: swift test
+
       - name: Import signing certificate
         if: env.MACOS_CERT_P12 != ''
         env:
