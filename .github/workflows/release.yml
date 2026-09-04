@@ -27,7 +27,7 @@ jobs:
   firmware:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install EDK II build dependencies
         run: |
@@ -39,7 +39,7 @@ jobs:
         run: scripts/build_firmware.sh --native
 
       - name: Upload firmware artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: macsandbox-edk2
           path: .build/firmware/
@@ -60,7 +60,7 @@ jobs:
       NOTARY_TEAM_ID: ${{ secrets.NOTARY_TEAM_ID }}
       NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Resolve version
         id: ver
@@ -78,7 +78,7 @@ jobs:
         run: brew install freerdp wimlib
 
       - name: Download branded EDK II firmware
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: macsandbox-edk2
           path: .build/firmware
@@ -117,7 +117,7 @@ jobs:
         run: hdiutil verify "dist/macSandbox-for-Windows-$VERSION.dmg"
 
       - name: Upload DMG artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: macSandbox-for-Windows-${{ steps.ver.outputs.version }}
           path: dist/*.dmg
