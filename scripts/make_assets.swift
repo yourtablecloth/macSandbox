@@ -2,7 +2,8 @@
 //
 // Copyright (C) 2026 Nam Jung Hyun (rkttu)
 //
-// Renders the app icon (assets/AppIcon.png, 1024²) and the DMG background (assets/dmg-background.png, 660×400)
+// Renders the app icon (assets/AppIcon.png, 1024²), the UEFI boot logo
+// (assets/BootLogo.bmp, 256²), and the DMG background (assets/dmg-background.png, 660×400)
 // with CoreGraphics. For trademark safety, it uses a macOS-style squircle + white window (traffic-light dots)
 // motif rather than a Windows logo. Regenerate:  swift scripts/make_assets.swift
 //
@@ -28,14 +29,80 @@ func renderPNG(width: Int, height: Int, to name: String, _ draw: (CGContext) -> 
     print("wrote \(url.path) (\(width)×\(height))")
 }
 
+func renderBMP(width: Int, height: Int, to name: String, _ draw: (CGContext) -> Void) {
+    let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height,
+                              bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                              colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
+    let ctx = NSGraphicsContext(bitmapImageRep: rep)!
+    NSGraphicsContext.saveGraphicsState()
+    NSGraphicsContext.current = ctx
+    draw(ctx.cgContext)
+    NSGraphicsContext.restoreGraphicsState()
+    let url = assetsDir.appendingPathComponent(name)
+    try! bmp24Data(from: rep, width: width, height: height).write(to: url)
+    print("wrote \(url.path) (\(width)×\(height))")
+}
+
+func bmp24Data(from rep: NSBitmapImageRep, width: Int, height: Int) -> Data {
+    let rowBytes = (width * 3 + 3) & ~3
+    let imageBytes = rowBytes * height
+    var data = Data(capacity: 54 + imageBytes)
+
+    func append16(_ value: UInt16) {
+        data.append(UInt8(truncatingIfNeeded: value))
+        data.append(UInt8(truncatingIfNeeded: value >> 8))
+    }
+    func append32(_ value: UInt32) {
+        for shift in stride(from: 0, through: 24, by: 8) {
+            data.append(UInt8(truncatingIfNeeded: value >> UInt32(shift)))
+        }
+    }
+
+    // BITMAPFILEHEADER + BITMAPINFOHEADER. A positive height stores rows
+    // bottom-up, which matches EDK II's BaseBmpSupportLib decoder.
+    data.append(contentsOf: [0x42, 0x4D])
+    append32(UInt32(54 + imageBytes))
+    append32(0)
+    append32(54)
+    append32(40)
+    append32(UInt32(width))
+    append32(UInt32(height))
+    append16(1)
+    append16(24)
+    append32(0)
+    append32(UInt32(imageBytes))
+    append32(0)
+    append32(0)
+    append32(0)
+    append32(0)
+
+    let padding = rowBytes - width * 3
+    for y in 0..<height {
+        for x in 0..<width {
+            let color = rep.colorAt(x: x, y: y)!.usingColorSpace(.deviceRGB)!
+            let red = UInt8((color.redComponent * 255).rounded())
+            let green = UInt8((color.greenComponent * 255).rounded())
+            let blue = UInt8((color.blueComponent * 255).rounded())
+            data.append(contentsOf: [blue, green, red])
+        }
+        data.append(contentsOf: repeatElement(0, count: padding))
+    }
+
+    return data
+}
+
 func rgb(_ r: Double, _ g: Double, _ b: Double, _ a: Double = 1) -> CGColor {
     CGColor(red: r, green: g, blue: b, alpha: a)
 }
 
 let cs = CGColorSpaceCreateDeviceRGB()
 
-// ── App icon ────────────────────────────────────────────────────────────────
-renderPNG(width: 1024, height: 1024, to: "AppIcon.png") { c in
+func drawAppIcon(_ c: CGContext, size: CGFloat) {
+    c.saveGState()
+    let scale = size / 1024
+    c.scaleBy(x: scale, y: scale)
+    defer { c.restoreGState() }
+
     let S: CGFloat = 1024
     // macOS 11+ icon grid: margin + rounded rect (squircle approximation)
     let margin: CGFloat = 100
@@ -78,6 +145,20 @@ renderPNG(width: 1024, height: 1024, to: "AppIcon.png") { c in
     c.setFillColor(rgb(0.31, 0.55, 0.97, 0.16))
     c.fill(CGRect(x: win.minX, y: win.minY, width: winW, height: 46))
     c.restoreGState()
+}
+
+// ── App icon ────────────────────────────────────────────────────────────────
+renderPNG(width: 1024, height: 1024, to: "AppIcon.png") { c in
+    drawAppIcon(c, size: 1024)
+}
+
+// ── UEFI boot logo ─────────────────────────────────────────────────────────
+// EDK II's BMP decoder does not preserve the PNG transparency used by the app
+// icon. Flatten the same artwork onto black so its edges match the boot screen.
+renderBMP(width: 256, height: 256, to: "BootLogo.bmp") { c in
+    c.setFillColor(rgb(0, 0, 0))
+    c.fill(CGRect(x: 0, y: 0, width: 256, height: 256))
+    drawAppIcon(c, size: 256)
 }
 
 // ── DMG background ─────────────────────────────────────────────────────────────────

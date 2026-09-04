@@ -24,6 +24,12 @@ respective project's distribution or in `gpl-sources/` (when GPL/LGPL sources ar
 |---|---|
 | **edk2** (`edk2-aarch64-code.fd`, `edk2-arm-vars.fd`) | **BSD-2-Clause-Patent** (full license text: `vendor/qemu/share/qemu/edk2-licenses.txt`) |
 
+MacSandbox builds `edk2-aarch64-code.fd` from EDK II commit
+`4dfdca63a93497203f197ec98ba20e2327e4afe4` with the changes recorded in
+`firmware/macsandbox-edk2.patch`. The custom build replaces the boot logo and suppresses
+graphical boot diagnostics. The EDK II source remains available from the upstream project,
+and this repository contains the complete downstream patch.
+
 ## 3. Build tools (separate processes)
 
 | Component | Version | License |

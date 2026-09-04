@@ -103,6 +103,9 @@ final class QEMURuntime {
         args += ["-m", "\(memoryMB)"]
         args += ["-drive", "if=pflash,format=raw,readonly=on,file=\(efiCodePath)"]
         args += ["-drive", "if=pflash,format=raw,file=\(efiVarsPath)"]
+        // Drive EDK II's front-page timeout to zero even when an existing VARS
+        // store contains an older nonzero Timeout value.
+        args += ["-boot", "menu=on,splash-time=0"]
         args += ["-device", "ramfb"]
         args += ["-display", "none"]
         args += ["-vnc", "127.0.0.1:1"]
@@ -180,6 +183,7 @@ final class QEMURuntime {
 
         args += ["-drive", "if=pflash,format=raw,readonly=on,file=\(efiCodePath)"]
         args += ["-drive", "if=pflash,format=raw,file=\(efiVarsPath)"]
+        args += ["-boot", "menu=on,splash-time=0"]
 
         // System disk — COW overlay on top of the baseline (NVMe)
         args += ["-drive", "if=none,id=sysdisk,format=qcow2,file=\(overlayPath)"]

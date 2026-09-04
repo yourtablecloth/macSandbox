@@ -1,0 +1,58 @@
+diff --git a/ArmVirtPkg/ArmVirtQemu.dsc b/ArmVirtPkg/ArmVirtQemu.dsc
+--- a/ArmVirtPkg/ArmVirtQemu.dsc
++++ b/ArmVirtPkg/ArmVirtQemu.dsc
+@@ -249 +249 @@
+-  gEfiMdePkgTokenSpaceGuid.PcdPlatformBootTimeOut|3
++  gEfiMdePkgTokenSpaceGuid.PcdPlatformBootTimeOut|0
+@@ -330 +330 @@
+-  gEfiMdePkgTokenSpaceGuid.PcdPlatformBootTimeOut|L"Timeout"|gEfiGlobalVariableGuid|0x0|5
++  gEfiMdePkgTokenSpaceGuid.PcdPlatformBootTimeOut|L"Timeout"|gEfiGlobalVariableGuid|0x0|0
+diff --git a/OvmfPkg/Library/PlatformBootManagerLibLight/PlatformBm.c b/OvmfPkg/Library/PlatformBootManagerLibLight/PlatformBm.c
+--- a/OvmfPkg/Library/PlatformBootManagerLibLight/PlatformBm.c
++++ b/OvmfPkg/Library/PlatformBootManagerLibLight/PlatformBm.c
+@@ -17 +16,0 @@
+-#include <Library/PlatformBmPrintScLib.h>
+@@ -36,0 +36,34 @@
++STATIC
++VOID
++ClearBootScreen (
++  VOID
++  )
++{
++  EFI_GRAPHICS_OUTPUT_BLT_PIXEL  Black;
++  EFI_GRAPHICS_OUTPUT_PROTOCOL   *GraphicsOutput;
++  EFI_STATUS                     Status;
++
++  Status = gBS->HandleProtocol (
++                  gST->ConsoleOutHandle,
++                  &gEfiGraphicsOutputProtocolGuid,
++                  (VOID **)&GraphicsOutput
++                  );
++  if (EFI_ERROR (Status)) {
++    return;
++  }
++
++  ZeroMem (&Black, sizeof (Black));
++  GraphicsOutput->Blt (
++                    GraphicsOutput,
++                    &Black,
++                    EfiBltVideoFill,
++                    0,
++                    0,
++                    0,
++                    0,
++                    GraphicsOutput->Mode->Info->HorizontalResolution,
++                    GraphicsOutput->Mode->Info->VerticalResolution,
++                    0
++                    );
++}
++
+@@ -1180,0 +1214 @@ PlatformBootManagerAfterConsole (
++  ClearBootScreen ();
+@@ -1239 +1273,0 @@ PlatformBootManagerAfterConsole (
+-  PlatformBmPrintScRegisterHandler ();
+diff --git a/OvmfPkg/Library/PlatformBootManagerLibLight/PlatformBootManagerLib.inf b/OvmfPkg/Library/PlatformBootManagerLibLight/PlatformBootManagerLib.inf
+--- a/OvmfPkg/Library/PlatformBootManagerLibLight/PlatformBootManagerLib.inf
++++ b/OvmfPkg/Library/PlatformBootManagerLibLight/PlatformBootManagerLib.inf
+@@ -46 +45,0 @@
+-  PlatformBmPrintScLib
