@@ -56,6 +56,29 @@ final class BaselineBuilder: ObservableObject {
         return try? decoder.decode(BaselineMetadata.self, from: data)
     }
 
+    /// On launch, complete or fail a build transaction left in `creating` by a host crash.
+    /// The guest marker is authoritative, and recovery also verifies the baseline files and credential.
+    @discardableResult
+    func recoverInterruptedBuild() async -> Bool {
+        guard !isRunning else { return false }
+        let outcome = await Task.detached(priority: .userInitiated) {
+            BaselineRecovery.recoverStoredBaseline()
+        }.value
+
+        switch outcome {
+        case .notNeeded:
+            return false
+        case .recovered:
+            updatePhase(.completed, L("build.detail.done"))
+            appendLog("Interrupted baseline finalized from the verified guest completion marker")
+            return true
+        case .failed(let reason):
+            updatePhase(.failed(reason), reason)
+            appendLog("Interrupted baseline recovery failed: \(reason)")
+            return false
+        }
+    }
+
     // MARK: - Build
 
     func build(config: InstallConfig, headless: Bool = false) async {

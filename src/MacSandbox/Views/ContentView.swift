@@ -28,6 +28,7 @@ struct ContentView: View {
     @State private var closeGuard = CloseGuard()
     @State private var wsbError: String?
     @State private var showConsent = ConsentStore.needsConsent
+    @State private var didAttemptBaselineRecovery = false
 
     var body: some View {
         Group {
@@ -95,8 +96,17 @@ struct ContentView: View {
 
     /// Enter the normal flow after terms acceptance (or when already accepted) — auto-start + show `.wsb` errors at launch.
     private func proceedAfterConsent() {
-        refresh()
-        if let err = openWSB.errorMessage { wsbError = err }
+        guard !didAttemptBaselineRecovery else {
+            refresh()
+            if let err = openWSB.errorMessage { wsbError = err }
+            return
+        }
+        didAttemptBaselineRecovery = true
+        Task { @MainActor in
+            await builder.recoverInterruptedBuild()
+            refresh()
+            if let err = openWSB.errorMessage { wsbError = err }
+        }
     }
 
     /// If the baseline is ready, start the sandbox immediately (once, the first time). Otherwise the build screen.
@@ -214,7 +224,7 @@ struct BuildView: View {
             loadEditions()
         }
         .onChange(of: builder.phase) { _, newPhase in
-            if newPhase == .completed { existing = builder.currentBaseline() }
+            if !builder.isRunning { existing = builder.currentBaseline() }
         }
     }
 
