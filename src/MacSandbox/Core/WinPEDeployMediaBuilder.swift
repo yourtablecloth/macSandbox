@@ -172,8 +172,9 @@ enum WinPEDeployMediaBuilder {
     // MARK: - Script generation
 
     /// Keywords for built-in (provisioned) apps to remove — games/media/promotional ones.
-    /// findstr /i's space-separated OR matching removes PackageName partial matches. Core apps (Store,
-    /// DesktopAppInstaller, Photos, Paint, SnippingTool, Calculator, Notepad, Terminal) are preserved.
+    /// The generated batch file matches these values with cmd.exe variable substitution because some
+    /// Windows 11 ARM64 WinPE images do not include findstr.exe. Core apps (Store, DesktopAppInstaller,
+    /// Photos, Paint, SnippingTool, Calculator, Notepad, Terminal) are preserved.
     static let removeAppxKeywords = [
         "Clipchamp",                  // video editor
         "SolitaireCollection",        // card game
@@ -192,10 +193,10 @@ enum WinPEDeployMediaBuilder {
     ]
 
     static func deployCmdContent(imageEdition: String) -> String {
-        let removeFilter = removeAppxKeywords.joined(separator: " ")
         // CRLF line breaks
-        let lines = [
+        var lines = [
             "@echo off",
+            "setlocal EnableExtensions EnableDelayedExpansion",
             "wpeinit",
             "echo === MacSandbox WinPE deploy ===",
             "diskpart /s X:\\Windows\\System32\\msbx-dp.txt",
@@ -214,7 +215,26 @@ enum WinPEDeployMediaBuilder {
             // Remove unwanted built-in apps (offline deprovisioning) — games/media/promotional ones.
             // Removed before the first logon, so they are never installed into the user profile (fast and deterministic).
             "echo === Remove provisioned inbox apps ===",
-            "for /f \"tokens=3\" %%P in ('dism /English /Image:W:\\ /Get-ProvisionedAppxPackages ^| findstr /b /c:\"PackageName\" ^| findstr /i \"\(removeFilter)\"') do dism /Image:W:\\ /Remove-ProvisionedAppxPackage /PackageName:%%P",
+            "dism /English /Image:W:\\ /Get-ProvisionedAppxPackages > X:\\Windows\\Temp\\msbx-appx.txt",
+            "for /f \"usebackq tokens=1,* delims=:\" %%A in (\"X:\\Windows\\Temp\\msbx-appx.txt\") do (",
+            "    set \"FIELD=%%A\"",
+            "    set \"FIELD=!FIELD: =!\"",
+            "    if /I \"!FIELD!\"==\"PackageName\" (",
+            "        set \"PKG=%%B\"",
+            "        for /f \"tokens=* delims= \" %%P in (\"!PKG!\") do set \"PKG=%%P\"",
+            "        set \"REMOVE=\"",
+        ]
+        lines += removeAppxKeywords.map {
+            "        if not \"!PKG:\($0)=!\"==\"!PKG!\" set \"REMOVE=1\""
+        }
+        lines += [
+            "        if defined REMOVE (",
+            "            echo Removing !PKG!",
+            "            dism /Image:W:\\ /Remove-ProvisionedAppxPackage /PackageName:\"!PKG!\"",
+            "        )",
+            "    )",
+            ")",
+            "del /f /q X:\\Windows\\Temp\\msbx-appx.txt",
             "md W:\\Windows\\Panther",
             "copy /Y X:\\unattend.xml W:\\Windows\\Panther\\unattend.xml",
             "md W:\\ProgramData\\MacSandbox",
