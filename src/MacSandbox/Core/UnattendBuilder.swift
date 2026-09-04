@@ -22,17 +22,26 @@ final class UnattendBuilder {
     /// Panther unattend for the first boot after DISM offline application.
     /// Uses the oobeSystem pass only (putting RunSynchronous in specialize makes some 25H2 builds reject the answer file).
     /// Auto-logs on with the bootstrap administrator account (sandboxsetup) → via FirstLogonCommands, enables the built-in
-    /// WDAGUtilityAccount (blank password, administrator) and turns on RDP, then **at the end, disables the bootstrap account**
+    /// WDAGUtilityAccount (administrator) and turns on RDP, then **at the end, disables the bootstrap account**
     /// (net user /active:no) and shuts down.
     /// Sandbox usage is a sole RDP (WDAGUtilityAccount) session. If console auto-logon is still alive, it races the RDP session
     /// (logon conflict) on a single-session client SKU. Empirical findings:
     ///  - WDAGUtilityAccount is a special account, so it cannot be a console auto-logon target (even a clean cold boot uses sandboxsetup).
     ///  - `AutoAdminLogon=0` alone cannot prevent OOBE's fresh-boot first auto-logon.
     ///  → The bootstrap account itself must be disabled so no console session is created (the console only shows an 'account unavailable' notice).
-    func generatePantherXML(config: InstallConfig) -> String {
+    func generatePantherXML(config: InstallConfig, rdpPassword: String) -> String {
         let locale = config.locale
         let winlogon = "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon"
         let accountReadyMarker = "C:\\ProgramData\\MacSandbox-WDAGUtilityAccount.ready"
+        let accountSetupCommand = """
+        $ErrorActionPreference = 'Stop'
+        & net.exe user WDAGUtilityAccount \(rdpPassword)
+        if ($LASTEXITCODE -ne 0) { throw 'Could not set the WDAGUtilityAccount password.' }
+        Set-LocalUser -Name 'WDAGUtilityAccount' -PasswordNeverExpires $true
+        Set-Content -LiteralPath '\(accountReadyMarker)' -Value 'ready' -Encoding Ascii
+        """
+        let encodedAccountSetupCommand = accountSetupCommand
+            .data(using: .utf16LittleEndian)!.base64EncodedString()
         return """
         <?xml version="1.0" encoding="utf-8"?>
         <unattend xmlns="urn:schemas-microsoft-com:unattend"
@@ -85,7 +94,7 @@ final class UnattendBuilder {
                         </SynchronousCommand>
                         <SynchronousCommand wcm:action="add">
                             <Order>2</Order>
-                            <CommandLine>cmd /c net user WDAGUtilityAccount "\(SandboxCreds.password)" &amp;&amp; %SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoLogo -NoProfile -NonInteractive -Command "$ErrorActionPreference = 'Stop'; Set-LocalUser -Name 'WDAGUtilityAccount' -PasswordNeverExpires $true; Set-Content -LiteralPath '\(accountReadyMarker)' -Value 'ready' -Encoding Ascii"</CommandLine>
+                            <CommandLine>%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoLogo -NoProfile -NonInteractive -EncodedCommand \(encodedAccountSetupCommand)</CommandLine>
                             <Description>set the internal RDP password, disable password expiration for the application-managed account, and mark the account configuration ready</Description>
                         </SynchronousCommand>
                         <SynchronousCommand wcm:action="add">
@@ -121,12 +130,12 @@ final class UnattendBuilder {
                         <SynchronousCommand wcm:action="add">
                             <Order>9</Order>
                             <CommandLine>reg add "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Terminal Server\\WinStations\\RDP-Tcp" /v UserAuthentication /t REG_DWORD /d 0 /f</CommandLine>
-                            <Description>disable NLA (blank password RDP)</Description>
+                            <Description>disable NLA for embedded RDP</Description>
                         </SynchronousCommand>
                         <SynchronousCommand wcm:action="add">
                             <Order>10</Order>
                             <CommandLine>reg add "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa" /v LimitBlankPasswordUse /t REG_DWORD /d 0 /f</CommandLine>
-                            <Description>allow blank password over RDP</Description>
+                            <Description>configure RDP password policy</Description>
                         </SynchronousCommand>
                         <SynchronousCommand wcm:action="add">
                             <Order>11</Order>
@@ -150,6 +159,11 @@ final class UnattendBuilder {
                         </SynchronousCommand>
                         <SynchronousCommand wcm:action="add">
                             <Order>15</Order>
+                            <CommandLine>cmd /c del /f /q %WINDIR%\\Panther\\unattend.xml</CommandLine>
+                            <Description>remove provisioning answer file</Description>
+                        </SynchronousCommand>
+                        <SynchronousCommand wcm:action="add">
+                            <Order>16</Order>
                             <CommandLine>%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoLogo -NoProfile -NonInteractive -Command "$deadline = (Get-Date).AddMinutes(5); while (-not (Test-Path -LiteralPath '\(accountReadyMarker)') -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 1 }; if (-not (Test-Path -LiteralPath '\(accountReadyMarker)')) { Write-Error 'Baseline provisioning failed: the WDAGUtilityAccount password or PasswordNeverExpires setting could not be applied.'; Start-Sleep -Seconds 86400; exit 1 }; Remove-Item -LiteralPath '\(accountReadyMarker)' -Force; shutdown.exe /s /t 15 /f"</CommandLine>
                             <Description>wait for account provisioning, report a visible failure if it did not complete, or shutdown to finalize the baseline</Description>
                         </SynchronousCommand>

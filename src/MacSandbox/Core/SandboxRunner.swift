@@ -53,6 +53,7 @@ final class SandboxRunner: ObservableObject {
     @Published private(set) var rdpPort: Int = 0
     /// The configuration currently running (reflects the .wsb). Used by the RDP view to gate redirection features.
     @Published private(set) var activeConfig = SandboxConfig()
+    @Published private(set) var rdpPassword = ""
 
     private let disk = DiskService()
     private let runtime = QEMURuntime()
@@ -61,7 +62,10 @@ final class SandboxRunner: ObservableObject {
     func hasBaseline() -> Bool {
         guard let data = try? Data(contentsOf: SandboxPaths.baselineMetadataPath),
               let meta = try? JSONDecoder.iso8601.decode(BaselineMetadata.self, from: data) else { return false }
-        return meta.status == .ready && fm.fileExists(atPath: meta.diskPath)
+        return meta.schemaVersion == BaselineMetadata.currentSchemaVersion
+            && meta.status == .ready
+            && fm.fileExists(atPath: meta.diskPath)
+            && (try? BaselineCredentialStore.password(for: meta.credentialID)) != nil
     }
 
     // MARK: - Execution
@@ -70,14 +74,24 @@ final class SandboxRunner: ObservableObject {
         guard !isRunning else { return }
         guard let data = try? Data(contentsOf: SandboxPaths.baselineMetadataPath),
               let meta = try? JSONDecoder.iso8601.decode(BaselineMetadata.self, from: data),
+              meta.schemaVersion == BaselineMetadata.currentSchemaVersion,
               meta.status == .ready else {
             state = .failed(L("run.state.noBaseline"))
+            return
+        }
+        do {
+            rdpPassword = try BaselineCredentialStore.password(for: meta.credentialID)
+        } catch {
+            state = .failed(error.localizedDescription)
             return
         }
         activeConfig = config
         isRunning = true
         logBuffer.clear()
-        defer { isRunning = false }
+        defer {
+            rdpPassword = ""
+            isRunning = false
+        }
 
         let id = String(UUID().uuidString.prefix(8))
         let overlayPath = SandboxPaths.overlaysDir.appendingPathComponent("\(id).qcow2").path

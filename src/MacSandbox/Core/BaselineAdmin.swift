@@ -72,6 +72,10 @@ final class BaselineAdmin: ObservableObject {
     /// Stop-wait + base image deletion (shared). The caller is responsible for user confirmation.
     private func performDestroy(runner: SandboxRunner) async {
         await stopAndWait(runner: runner)
+        if let data = try? Data(contentsOf: SandboxPaths.baselineMetadataPath),
+           let meta = try? JSONDecoder.iso8601.decode(BaselineMetadata.self, from: data) {
+            BaselineCredentialStore.delete(id: meta.credentialID)
+        }
         try? FileManager.default.removeItem(at: SandboxPaths.baselineDir)
         rebuildMode = true   // Trigger router refresh (no baseline, so the build screen)
     }
