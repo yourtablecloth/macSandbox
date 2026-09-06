@@ -212,6 +212,15 @@ enum WinPEDeployMediaBuilder {
             "reg load HKLM\\MSBXSOFT W:\\Windows\\System32\\config\\SOFTWARE",
             "reg add HKLM\\MSBXSOFT\\Policies\\Microsoft\\Edge /v HideFirstRunExperience /t REG_DWORD /d 1 /f",
             "reg unload HKLM\\MSBXSOFT || (ping -n 3 127.0.0.1 >nul & reg unload HKLM\\MSBXSOFT)",
+            // Seed the default user hive before OOBE creates any profiles. Provision.ps1 runs as
+            // sandboxsetup, so changing HKCU there would not reach WDAGUtilityAccount's first RDP logon.
+            // StartShownOnUpgrade suppresses Start's initial auto-open without disabling manual use.
+            // This is an Explorer preference, not a documented policy; recheck it with new Windows builds.
+            "echo === Suppress first-logon Start menu ===",
+            "reg load HKLM\\MSBXUSER W:\\Users\\Default\\NTUSER.DAT || exit /b 1",
+            "reg add HKLM\\MSBXUSER\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced /v StartShownOnUpgrade /t REG_DWORD /d 1 /f || (reg unload HKLM\\MSBXUSER & exit /b 1)",
+            "reg unload HKLM\\MSBXUSER || (ping -n 3 127.0.0.1 >nul & reg unload HKLM\\MSBXUSER)",
+            "if errorlevel 1 exit /b 1",
             // Remove unwanted built-in apps (offline deprovisioning) — games/media/promotional ones.
             // Removed before the first logon, so they are never installed into the user profile (fast and deterministic).
             "echo === Remove provisioned inbox apps ===",

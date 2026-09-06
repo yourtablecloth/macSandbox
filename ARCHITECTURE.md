@@ -54,6 +54,13 @@ which the ARM64 inbox lacks — it is what makes RDP work at runtime. (Other ARM
 
 1. **Phase 1 (deployment)**: Boot from the GPT FAT boot disk + Windows ISO + an empty NVMe (`nvme`).
    WinPE comes up with zero prompts or key presses and runs `deploy.cmd` → applies `dism` → `bcdboot` → shutdown (QEMU exit).
+   Before OOBE, the deployment script loads `W:\Users\Default\NTUSER.DAT` and sets
+   `Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced\StartShownOnUpgrade` to DWORD `1`.
+   New profiles, including WDAGUtilityAccount at its first RDP logon, inherit this preference to suppress
+   the initial Start menu auto-open. This follows the [AutopilotBranding implementation](https://github.com/mtniehaus/AutopilotBranding/blob/main/AutopilotBranding/AutopilotBranding.ps1).
+   The value is an Explorer preference rather than a documented Windows policy, so its behavior needs
+   verification on each supported Windows build. Existing baselines do not receive this change;
+   rebuilding the baseline applies it to subsequent disposable sessions.
 2. **Phase 2 (OOBE)**: Boot from the NVMe alone (the firmware auto-boots the ESP's `\EFI\BOOT\BOOTAA64.EFI`).
    `\Windows\Panther\unattend.xml` (oobeSystem-only) automates the first boot:
    bootstrap admin auto-logon → FirstLogonCommands enable the built-in **WDAGUtilityAccount**, set its RDP credential,
