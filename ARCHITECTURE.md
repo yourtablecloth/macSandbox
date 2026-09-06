@@ -86,6 +86,10 @@ Brings up a disposable environment on top of the baseline (the counterpart to Wi
 The logon command is passed via `macsandbox-logon.cmd` on a small FAT config disk, and the baseline's
 logon agent (HKLM Run key) runs it.
 
+A potential saved-state startup path is documented in
+[Warm-start feasibility and WSB compatibility](docs/research/warm-start-feasibility.md).
+The research records device-level probe results and pending Windows validation; the runtime still uses cold boot.
+
 ## RDP hybrid (interaction + redirection)
 
 The same approach Windows Sandbox itself uses internally with RDP. Two paths run in parallel:
